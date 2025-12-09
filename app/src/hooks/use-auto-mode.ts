@@ -180,6 +180,35 @@ export function useAutoMode() {
     }
   }, [setAutoModeRunning, clearRunningTasks]);
 
+  // Stop a specific feature
+  const stopFeature = useCallback(async (featureId: string) => {
+    try {
+      const api = getElectronAPI();
+      if (!api?.autoMode?.stopFeature) {
+        throw new Error("Stop feature API not available");
+      }
+
+      const result = await api.autoMode.stopFeature(featureId);
+
+      if (result.success) {
+        removeRunningTask(featureId);
+        console.log("[AutoMode] Feature stopped successfully:", featureId);
+        addAutoModeActivity({
+          featureId,
+          type: "complete",
+          message: "Feature stopped by user",
+          passes: false,
+        });
+      } else {
+        console.error("[AutoMode] Failed to stop feature:", result.error);
+        throw new Error(result.error || "Failed to stop feature");
+      }
+    } catch (error) {
+      console.error("[AutoMode] Error stopping feature:", error);
+      throw error;
+    }
+  }, [removeRunningTask, addAutoModeActivity]);
+
   return {
     isRunning: isAutoModeRunning,
     runningTasks: runningAutoTasks,
@@ -187,5 +216,6 @@ export function useAutoMode() {
     canStartNewTask,
     start,
     stop,
+    stopFeature,
   };
 }

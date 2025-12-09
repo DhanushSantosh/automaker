@@ -208,10 +208,16 @@ export interface AutoModeAPI {
     error?: string;
   }>;
 
+  stopFeature: (featureId: string) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+
   status: () => Promise<{
     success: boolean;
     isRunning?: boolean;
     currentFeatureId?: string | null;
+    runningFeatures?: string[];
     error?: string;
   }>;
 

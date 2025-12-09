@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Feature } from "@/store/app-store";
-import { GripVertical, Edit, CheckCircle2, Circle, Loader2, Trash2, Eye, PlayCircle, RotateCcw } from "lucide-react";
+import { GripVertical, Edit, CheckCircle2, Circle, Loader2, Trash2, Eye, PlayCircle, RotateCcw, StopCircle } from "lucide-react";
 
 interface KanbanCardProps {
   feature: Feature;
@@ -21,11 +21,12 @@ interface KanbanCardProps {
   onViewOutput?: () => void;
   onVerify?: () => void;
   onResume?: () => void;
+  onForceStop?: () => void;
   hasContext?: boolean;
   isCurrentAutoTask?: boolean;
 }
 
-export function KanbanCard({ feature, onEdit, onDelete, onViewOutput, onVerify, onResume, hasContext, isCurrentAutoTask }: KanbanCardProps) {
+export function KanbanCard({ feature, onEdit, onDelete, onViewOutput, onVerify, onResume, onForceStop, hasContext, isCurrentAutoTask }: KanbanCardProps) {
   // Disable dragging if the feature is in progress or verified
   const isDraggable = feature.status === "backlog";
   const {
@@ -112,20 +113,39 @@ export function KanbanCard({ feature, onEdit, onDelete, onViewOutput, onVerify, 
 
         {/* Actions */}
         <div className="flex gap-2">
-          {isCurrentAutoTask && onViewOutput && (
-            <Button
-              variant="default"
-              size="sm"
-              className="flex-1 h-7 text-xs bg-purple-600 hover:bg-purple-700"
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewOutput();
-              }}
-              data-testid={`view-output-${feature.id}`}
-            >
-              <Eye className="w-3 h-3 mr-1" />
-              View Output
-            </Button>
+          {isCurrentAutoTask && (
+            <>
+              {onViewOutput && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="flex-1 h-7 text-xs bg-purple-600 hover:bg-purple-700"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onViewOutput();
+                  }}
+                  data-testid={`view-output-${feature.id}`}
+                >
+                  <Eye className="w-3 h-3 mr-1" />
+                  View Output
+                </Button>
+              )}
+              {onForceStop && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onForceStop();
+                  }}
+                  data-testid={`force-stop-${feature.id}`}
+                >
+                  <StopCircle className="w-3 h-3 mr-1" />
+                  Stop
+                </Button>
+              )}
+            </>
           )}
           {!isCurrentAutoTask && feature.status === "in_progress" && (
             <>

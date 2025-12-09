@@ -44,7 +44,7 @@
     "category": "Kanban",
     "description": "Add a way to force stop an agent on a card which is currently running",
     "steps": [],
-    "status": "in_progress"
+    "status": "verified"
   },
   {
     "id": "feature-1765260864296-98yunv0vj",
