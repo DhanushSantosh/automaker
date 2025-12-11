@@ -314,7 +314,7 @@ export function InterviewView() {
 
       // Create initial feature in the features folder
       const initialFeature: Feature = {
-        id: `feature-${Date.now()}-0`,
+        id: crypto.randomUUID(),
         category: "Core",
         description: "Initial project setup",
         status: "backlog" as const,

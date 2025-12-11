@@ -771,9 +771,7 @@ ${Object.entries(projectAnalysis.filesByExtension)
       // Convert DetectedFeature to Feature by adding required id and status
       for (const detectedFeature of detectedFeatures) {
         const feature: Feature = {
-          id: `feature-${Date.now()}-${Math.random()
-            .toString(36)
-            .substr(2, 9)}`,
+          id: crypto.randomUUID(),
           category: detectedFeature.category,
           description: detectedFeature.description,
           steps: detectedFeature.steps,
