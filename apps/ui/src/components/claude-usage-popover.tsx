@@ -123,7 +123,11 @@ export function ClaudeUsagePopover() {
     isPrimary?: boolean;
     stale?: boolean;
   }) => {
-    const status = getStatusInfo(percentage);
+    // Check if percentage is valid (not NaN, not undefined, is a finite number)
+    const isValidPercentage = typeof percentage === "number" && !isNaN(percentage) && isFinite(percentage);
+    const safePercentage = isValidPercentage ? percentage : 0;
+
+    const status = getStatusInfo(safePercentage);
     const StatusIcon = status.icon;
 
     return (
@@ -131,7 +135,7 @@ export function ClaudeUsagePopover() {
         className={cn(
           "rounded-xl border bg-card/50 p-4 transition-opacity",
           isPrimary ? "border-border/60 shadow-sm" : "border-border/40",
-          stale && "opacity-60"
+          (stale || !isValidPercentage) && "opacity-50"
         )}
       >
         <div className="flex items-start justify-between mb-3">
@@ -141,20 +145,24 @@ export function ClaudeUsagePopover() {
             </h4>
             <p className="text-[10px] text-muted-foreground">{subtitle}</p>
           </div>
-          <div className="flex items-center gap-1.5">
-            <StatusIcon className={cn("w-3.5 h-3.5", status.color)} />
-            <span
-              className={cn(
-                "font-mono font-bold",
-                status.color,
-                isPrimary ? "text-base" : "text-sm"
-              )}
-            >
-              {Math.round(percentage)}%
-            </span>
-          </div>
+          {isValidPercentage ? (
+            <div className="flex items-center gap-1.5">
+              <StatusIcon className={cn("w-3.5 h-3.5", status.color)} />
+              <span
+                className={cn(
+                  "font-mono font-bold",
+                  status.color,
+                  isPrimary ? "text-base" : "text-sm"
+                )}
+              >
+                {Math.round(safePercentage)}%
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">N/A</span>
+          )}
         </div>
-        <ProgressBar percentage={percentage} colorClass={status.bg} />
+        <ProgressBar percentage={safePercentage} colorClass={isValidPercentage ? status.bg : "bg-muted-foreground/30"} />
         {resetText && (
           <div className="mt-2 flex justify-end">
             <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -267,8 +275,8 @@ export function ClaudeUsagePopover() {
                 <UsageCard
                   title="Sonnet"
                   subtitle="Weekly"
-                  percentage={claudeUsage.opusWeeklyPercentage}
-                  resetText={claudeUsage.opusResetText}
+                  percentage={claudeUsage.sonnetWeeklyPercentage}
+                  resetText={claudeUsage.sonnetResetText}
                   stale={isStale}
                 />
               </div>

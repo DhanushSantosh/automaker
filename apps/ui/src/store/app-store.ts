@@ -528,9 +528,9 @@ export interface ClaudeUsage {
   weeklyResetTime: string;
   weeklyResetText: string;
 
-  opusWeeklyTokensUsed: number;
-  opusWeeklyPercentage: number;
-  opusResetText: string;
+  sonnetWeeklyTokensUsed: number;
+  sonnetWeeklyPercentage: number;
+  sonnetResetText: string;
 
   costUsed: number | null;
   costLimit: number | null;
