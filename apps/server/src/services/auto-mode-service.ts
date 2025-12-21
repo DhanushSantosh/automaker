@@ -14,7 +14,7 @@ import type { ExecuteOptions } from "../providers/types.js";
 import { exec } from "child_process";
 import { promisify } from "util";
 import path from "path";
-import fs from "fs/promises";
+import * as secureFs from "../lib/secure-fs.js";
 import type { EventEmitter } from "../lib/events.js";
 import { buildPromptWithImages } from "../lib/prompt-builder.js";
 import { resolveModelString, DEFAULT_MODELS } from "../lib/model-resolver.js";
@@ -24,6 +24,7 @@ import { resolveDependencies, areDependenciesSatisfied } from "../lib/dependency
 import type { Feature } from "./feature-loader.js";
 import { FeatureLoader } from "./feature-loader.js";
 import { getFeatureDir, getAutomakerDir, getFeaturesDir, getContextDir } from "../lib/automaker-paths.js";
+import { isPathAllowed, PathNotAllowedError } from "../lib/security.js";
 
 const execAsync = promisify(exec);
 
@@ -486,6 +487,11 @@ export class AutoModeService {
     this.runningFeatures.set(featureId, tempRunningFeature);
 
     try {
+      // Validate that project path is allowed
+      if (!isPathAllowed(projectPath)) {
+        throw new PathNotAllowedError(projectPath);
+      }
+
       // Check if feature has existing context - if so, resume instead of starting fresh
       // Skip this check if we're already being called with a continuation prompt (from resumeFeature)
       if (!options?.continuationPrompt) {
@@ -548,6 +554,11 @@ export class AutoModeService {
       const workDir = worktreePath
         ? path.resolve(worktreePath)
         : path.resolve(projectPath);
+
+      // Validate that working directory is allowed
+      if (!isPathAllowed(workDir)) {
+        throw new PathNotAllowedError(workDir);
+      }
 
       // Update running feature with actual worktree info
       tempRunningFeature.worktreePath = worktreePath;
@@ -687,7 +698,7 @@ export class AutoModeService {
 
     let hasContext = false;
     try {
-      await fs.access(contextPath);
+      await secureFs.access(contextPath);
       hasContext = true;
     } catch {
       // No context
@@ -695,7 +706,7 @@ export class AutoModeService {
 
     if (hasContext) {
       // Load previous context and continue
-      const context = await fs.readFile(contextPath, "utf-8");
+      const context = await secureFs.readFile(contextPath, "utf-8") as string;
       return this.executeFeatureWithContext(
         projectPath,
         featureId,
@@ -755,7 +766,7 @@ export class AutoModeService {
     const contextPath = path.join(featureDir, "agent-output.md");
     let previousContext = "";
     try {
-      previousContext = await fs.readFile(contextPath, "utf-8");
+      previousContext = await secureFs.readFile(contextPath, "utf-8") as string;
     } catch {
       // No previous context
     }
@@ -821,7 +832,7 @@ Address the follow-up instructions above. Review the previous work and make the 
         const featureDirForImages = getFeatureDir(projectPath, featureId);
         const featureImagesDir = path.join(featureDirForImages, "images");
 
-        await fs.mkdir(featureImagesDir, { recursive: true });
+        await secureFs.mkdir(featureImagesDir, { recursive: true });
 
         for (const imagePath of imagePaths) {
           try {
@@ -830,7 +841,7 @@ Address the follow-up instructions above. Review the previous work and make the 
             const destPath = path.join(featureImagesDir, filename);
 
             // Copy the image
-            await fs.copyFile(imagePath, destPath);
+            await secureFs.copyFile(imagePath, destPath);
 
             // Store the absolute path (external storage uses absolute paths)
             copiedImagePaths.push(destPath);
@@ -872,7 +883,7 @@ Address the follow-up instructions above. Review the previous work and make the 
         const featurePath = path.join(featureDirForSave, "feature.json");
 
         try {
-          await fs.writeFile(featurePath, JSON.stringify(feature, null, 2));
+          await secureFs.writeFile(featurePath, JSON.stringify(feature, null, 2));
         } catch (error) {
           console.error(`[AutoMode] Failed to save feature.json:`, error);
         }
@@ -938,7 +949,7 @@ Address the follow-up instructions above. Review the previous work and make the 
     let workDir = projectPath;
 
     try {
-      await fs.access(worktreePath);
+      await secureFs.access(worktreePath);
       workDir = worktreePath;
     } catch {
       // No worktree
@@ -1007,7 +1018,7 @@ Address the follow-up instructions above. Review the previous work and make the 
     // Use the provided worktree path if given
     if (providedWorktreePath) {
       try {
-        await fs.access(providedWorktreePath);
+        await secureFs.access(providedWorktreePath);
         workDir = providedWorktreePath;
         console.log(`[AutoMode] Committing in provided worktree: ${workDir}`);
       } catch {
@@ -1023,7 +1034,7 @@ Address the follow-up instructions above. Review the previous work and make the 
         featureId
       );
       try {
-        await fs.access(legacyWorktreePath);
+        await secureFs.access(legacyWorktreePath);
         workDir = legacyWorktreePath;
         console.log(`[AutoMode] Committing in legacy worktree: ${workDir}`);
       } catch {
@@ -1086,7 +1097,7 @@ Address the follow-up instructions above. Review the previous work and make the 
     const contextPath = path.join(featureDir, "agent-output.md");
 
     try {
-      await fs.access(contextPath);
+      await secureFs.access(contextPath);
       return true;
     } catch {
       return false;
@@ -1104,9 +1115,9 @@ Address the follow-up instructions above. Review the previous work and make the 
 
     try {
       // Check if directory exists first
-      await fs.access(contextDir);
+      await secureFs.access(contextDir);
 
-      const files = await fs.readdir(contextDir);
+      const files = await secureFs.readdir(contextDir);
       // Filter for text-based context files (case-insensitive for Windows)
       const textFiles = files.filter((f) => {
         const lower = f.toLowerCase();
@@ -1119,7 +1130,7 @@ Address the follow-up instructions above. Review the previous work and make the 
       for (const file of textFiles) {
         // Use path.join for cross-platform path construction
         const filePath = path.join(contextDir, file);
-        const content = await fs.readFile(filePath, "utf-8");
+        const content = await secureFs.readFile(filePath, "utf-8") as string;
         contents.push(`## ${file}\n\n${content}`);
       }
 
@@ -1218,8 +1229,8 @@ Format your response as a structured markdown document.`;
       // Save analysis to .automaker directory
       const automakerDir = getAutomakerDir(projectPath);
       const analysisPath = path.join(automakerDir, "project-analysis.md");
-      await fs.mkdir(automakerDir, { recursive: true });
-      await fs.writeFile(analysisPath, analysisResult);
+      await secureFs.mkdir(automakerDir, { recursive: true });
+      await secureFs.writeFile(analysisPath, analysisResult);
 
       this.emitAutoModeEvent("auto_mode_feature_complete", {
         featureId: analysisFeatureId,
@@ -1487,7 +1498,7 @@ Format your response as a structured markdown document.`;
     const featurePath = path.join(featureDir, "feature.json");
 
     try {
-      const data = await fs.readFile(featurePath, "utf-8");
+      const data = await secureFs.readFile(featurePath, "utf-8") as string;
       return JSON.parse(data);
     } catch {
       return null;
@@ -1504,7 +1515,7 @@ Format your response as a structured markdown document.`;
     const featurePath = path.join(featureDir, "feature.json");
 
     try {
-      const data = await fs.readFile(featurePath, "utf-8");
+      const data = await secureFs.readFile(featurePath, "utf-8") as string;
       const feature = JSON.parse(data);
       feature.status = status;
       feature.updatedAt = new Date().toISOString();
@@ -1516,7 +1527,7 @@ Format your response as a structured markdown document.`;
         // Clear the timestamp when moving to other statuses
         feature.justFinishedAt = undefined;
       }
-      await fs.writeFile(featurePath, JSON.stringify(feature, null, 2));
+      await secureFs.writeFile(featurePath, JSON.stringify(feature, null, 2));
     } catch {
       // Feature file may not exist
     }
@@ -1539,7 +1550,7 @@ Format your response as a structured markdown document.`;
     );
 
     try {
-      const data = await fs.readFile(featurePath, "utf-8");
+      const data = await secureFs.readFile(featurePath, "utf-8") as string;
       const feature = JSON.parse(data);
 
       // Initialize planSpec if it doesn't exist
@@ -1560,7 +1571,7 @@ Format your response as a structured markdown document.`;
       }
 
       feature.updatedAt = new Date().toISOString();
-      await fs.writeFile(featurePath, JSON.stringify(feature, null, 2));
+      await secureFs.writeFile(featurePath, JSON.stringify(feature, null, 2));
     } catch (error) {
       console.error(`[AutoMode] Failed to update planSpec for ${featureId}:`, error);
     }
@@ -1571,7 +1582,7 @@ Format your response as a structured markdown document.`;
     const featuresDir = getFeaturesDir(projectPath);
 
     try {
-      const entries = await fs.readdir(featuresDir, { withFileTypes: true });
+      const entries = await secureFs.readdir(featuresDir, { withFileTypes: true });
       const allFeatures: Feature[] = [];
       const pendingFeatures: Feature[] = [];
 
@@ -1584,7 +1595,7 @@ Format your response as a structured markdown document.`;
             "feature.json"
           );
           try {
-            const data = await fs.readFile(featurePath, "utf-8");
+            const data = await secureFs.readFile(featurePath, "utf-8") as string;
             const feature = JSON.parse(data);
             allFeatures.push(feature);
 
@@ -1788,7 +1799,7 @@ This helps parse your summary correctly in the output logs.`;
 
       // Create a mock file with "yellow" content as requested in the test
       const mockFilePath = path.join(workDir, "yellow.txt");
-      await fs.writeFile(mockFilePath, "yellow");
+      await secureFs.writeFile(mockFilePath, "yellow");
 
       this.emitAutoModeEvent("auto_mode_progress", {
         featureId,
@@ -1813,8 +1824,8 @@ This is a mock agent response for CI/CD testing.
 This mock response was generated because AUTOMAKER_MOCK_AGENT=true was set.
 `;
 
-      await fs.mkdir(path.dirname(outputPath), { recursive: true });
-      await fs.writeFile(outputPath, mockOutput);
+      await secureFs.mkdir(path.dirname(outputPath), { recursive: true });
+      await secureFs.writeFile(outputPath, mockOutput);
 
       console.log(
         `[AutoMode] MOCK MODE: Completed mock execution for feature ${featureId}`
@@ -1890,8 +1901,8 @@ This mock response was generated because AUTOMAKER_MOCK_AGENT=true was set.
     // Helper to write current responseText to file
     const writeToFile = async (): Promise<void> => {
       try {
-        await fs.mkdir(path.dirname(outputPath), { recursive: true });
-        await fs.writeFile(outputPath, responseText);
+        await secureFs.mkdir(path.dirname(outputPath), { recursive: true });
+        await secureFs.writeFile(outputPath, responseText);
       } catch (error) {
         // Log but don't crash - file write errors shouldn't stop execution
         console.error(
@@ -1934,7 +1945,7 @@ This mock response was generated because AUTOMAKER_MOCK_AGENT=true was set.
             ) {
               throw new Error(
                 "Authentication failed: Invalid or expired API key. " +
-                  "Please check your ANTHROPIC_API_KEY or GOOGLE_API_KEY, or run 'claude login' to re-authenticate."
+                  "Please check your ANTHROPIC_API_KEY, or run 'claude login' to re-authenticate."
               );
             }
 

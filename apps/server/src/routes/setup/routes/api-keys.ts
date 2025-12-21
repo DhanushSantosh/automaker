@@ -12,7 +12,6 @@ export function createApiKeysHandler() {
         success: true,
         hasAnthropicKey:
           !!getApiKey("anthropic") || !!process.env.ANTHROPIC_API_KEY,
-        hasGoogleKey: !!getApiKey("google") || !!process.env.GOOGLE_API_KEY,
       });
     } catch (error) {
       logError(error, "Get API keys failed");

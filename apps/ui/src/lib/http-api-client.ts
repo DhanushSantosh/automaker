@@ -766,6 +766,7 @@ export class HttpApiClient implements ElectronAPI {
       success: boolean;
       configured: boolean;
       workspaceDir?: string;
+      defaultDir?: string | null;
       error?: string;
     }> => this.get("/api/workspace/config"),
 

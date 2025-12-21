@@ -7,7 +7,6 @@ import {
   FeatureLoader,
   type Feature,
 } from "../../../services/feature-loader.js";
-import { addAllowedPath } from "../../../lib/security.js";
 import { getErrorMessage, logError } from "../common.js";
 
 export function createCreateHandler(featureLoader: FeatureLoader) {
@@ -27,9 +26,6 @@ export function createCreateHandler(featureLoader: FeatureLoader) {
           });
         return;
       }
-
-      // Add project path to allowed paths
-      addAllowedPath(projectPath);
 
       const created = await featureLoader.create(projectPath, feature);
       res.json({ success: true, feature: created });

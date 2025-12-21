@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import {
   Dialog,
@@ -26,11 +25,12 @@ import {
 } from "lucide-react";
 import { starterTemplates, type StarterTemplate } from "@/lib/templates";
 import { getElectronAPI } from "@/lib/electron";
-import { getHttpApiClient } from "@/lib/http-api-client";
 import { cn } from "@/lib/utils";
 import { useFileBrowser } from "@/contexts/file-browser-context";
-
-const LAST_PROJECT_DIR_KEY = "automaker:lastProjectDir";
+import {
+  getDefaultWorkspaceDirectory,
+  saveLastProjectDirectory,
+} from "@/lib/workspace-config";
 
 interface ValidationErrors {
   projectName?: boolean;
@@ -81,25 +81,15 @@ export function NewProjectModal({
   // Fetch workspace directory when modal opens
   useEffect(() => {
     if (open) {
-      // First, check localStorage for last used directory
-      const lastUsedDir = localStorage.getItem(LAST_PROJECT_DIR_KEY);
-      if (lastUsedDir) {
-        setWorkspaceDir(lastUsedDir);
-        return;
-      }
-
-      // Fall back to server config if no saved directory
       setIsLoadingWorkspace(true);
-      const httpClient = getHttpApiClient();
-      httpClient.workspace
-        .getConfig()
-        .then((result) => {
-          if (result.success && result.workspaceDir) {
-            setWorkspaceDir(result.workspaceDir);
+      getDefaultWorkspaceDirectory()
+        .then((defaultDir) => {
+          if (defaultDir) {
+            setWorkspaceDir(defaultDir);
           }
         })
         .catch((error) => {
-          console.error("Failed to get workspace config:", error);
+          console.error("Failed to get default workspace directory:", error);
         })
         .finally(() => {
           setIsLoadingWorkspace(false);
@@ -211,7 +201,7 @@ export function NewProjectModal({
     if (selectedPath) {
       setWorkspaceDir(selectedPath);
       // Save to localStorage for next time
-      localStorage.setItem(LAST_PROJECT_DIR_KEY, selectedPath);
+      saveLastProjectDirectory(selectedPath);
       // Clear any workspace error when a valid directory is selected
       if (errors.workspaceDir) {
         setErrors((prev) => ({ ...prev, workspaceDir: false }));
@@ -296,9 +286,7 @@ export function NewProjectModal({
                     {projectPath || workspaceDir}
                   </code>
                 </>
-              ) : (
-                <span className="text-red-500">No workspace configured</span>
-              )}
+              ) : null}
             </span>
             <Button
               type="button"

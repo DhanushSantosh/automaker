@@ -4,7 +4,6 @@
 
 import type { Request, Response } from "express";
 import { FeatureLoader } from "../../../services/feature-loader.js";
-import { addAllowedPath } from "../../../lib/security.js";
 import { getErrorMessage, logError } from "../common.js";
 
 export function createListHandler(featureLoader: FeatureLoader) {
@@ -18,9 +17,6 @@ export function createListHandler(featureLoader: FeatureLoader) {
           .json({ success: false, error: "projectPath is required" });
         return;
       }
-
-      // Add project path to allowed paths
-      addAllowedPath(projectPath);
 
       const features = await featureLoader.getAll(projectPath);
       res.json({ success: true, features });

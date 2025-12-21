@@ -6,7 +6,6 @@ import type { Request, Response } from "express";
 import { AgentService } from "../../../services/agent-service.js";
 import { createLogger } from "../../../lib/logger.js";
 import { getErrorMessage, logError } from "../common.js";
-
 const logger = createLogger("Agent");
 
 export function createStartHandler(agentService: AgentService) {

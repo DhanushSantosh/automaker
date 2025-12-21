@@ -20,6 +20,7 @@
 import { useEffect, useState, useRef } from "react";
 import { getHttpApiClient } from "@/lib/http-api-client";
 import { isElectron } from "@/lib/electron";
+import { getItem, removeItem } from "@/lib/storage";
 
 /**
  * State returned by useSettingsMigration hook
@@ -122,7 +123,7 @@ export function useSettingsMigration(): MigrationState {
         }
 
         // Check if we have localStorage data to migrate
-        const automakerStorage = localStorage.getItem("automaker-storage");
+        const automakerStorage = getItem("automaker-storage");
         if (!automakerStorage) {
           console.log(
             "[Settings Migration] No localStorage data to migrate"
@@ -136,7 +137,7 @@ export function useSettingsMigration(): MigrationState {
         // Collect all localStorage data
         const localStorageData: Record<string, string> = {};
         for (const key of LOCALSTORAGE_KEYS) {
-          const value = localStorage.getItem(key);
+          const value = getItem(key);
           if (value) {
             localStorageData[key] = value;
           }
@@ -154,7 +155,7 @@ export function useSettingsMigration(): MigrationState {
 
           // Clear old localStorage keys (but keep automaker-storage for Zustand)
           for (const key of KEYS_TO_CLEAR_AFTER_MIGRATION) {
-            localStorage.removeItem(key);
+            removeItem(key);
           }
 
           setState({ checked: true, migrated: true, error: null });
@@ -203,7 +204,7 @@ export async function syncSettingsToServer(): Promise<boolean> {
 
   try {
     const api = getHttpApiClient();
-    const automakerStorage = localStorage.getItem("automaker-storage");
+    const automakerStorage = getItem("automaker-storage");
 
     if (!automakerStorage) {
       return false;

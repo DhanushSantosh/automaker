@@ -26,6 +26,14 @@ RUN npm run build --workspace=apps/server
 # Production stage
 FROM node:20-alpine
 
+# Install git, curl, and GitHub CLI (pinned version for reproducible builds)
+RUN apk add --no-cache git curl && \
+    GH_VERSION="2.63.2" && \
+    curl -L "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" -o gh.tar.gz && \
+    tar -xzf gh.tar.gz && \
+    mv "gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh && \
+    rm -rf gh.tar.gz "gh_${GH_VERSION}_linux_amd64"
+
 WORKDIR /app
 
 # Create non-root user

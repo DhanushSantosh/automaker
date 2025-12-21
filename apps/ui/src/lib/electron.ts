@@ -1,5 +1,6 @@
 // Type definitions for Electron IPC API
 import type { SessionListItem, Message } from "@/types/electron";
+import { getJSON, setJSON, removeItem } from "./storage";
 
 export interface FileEntry {
   name: string;
@@ -2667,28 +2668,22 @@ export interface TrashedProject extends Project {
 }
 
 export const getStoredProjects = (): Project[] => {
-  if (typeof window === "undefined") return [];
-  const stored = localStorage.getItem(STORAGE_KEYS.PROJECTS);
-  return stored ? JSON.parse(stored) : [];
+  return getJSON<Project[]>(STORAGE_KEYS.PROJECTS) ?? [];
 };
 
 export const saveProjects = (projects: Project[]): void => {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
+  setJSON(STORAGE_KEYS.PROJECTS, projects);
 };
 
 export const getCurrentProject = (): Project | null => {
-  if (typeof window === "undefined") return null;
-  const stored = localStorage.getItem(STORAGE_KEYS.CURRENT_PROJECT);
-  return stored ? JSON.parse(stored) : null;
+  return getJSON<Project>(STORAGE_KEYS.CURRENT_PROJECT);
 };
 
 export const setCurrentProject = (project: Project | null): void => {
-  if (typeof window === "undefined") return;
   if (project) {
-    localStorage.setItem(STORAGE_KEYS.CURRENT_PROJECT, JSON.stringify(project));
+    setJSON(STORAGE_KEYS.CURRENT_PROJECT, project);
   } else {
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_PROJECT);
+    removeItem(STORAGE_KEYS.CURRENT_PROJECT);
   }
 };
 
@@ -2709,12 +2704,9 @@ export const removeProject = (projectId: string): void => {
 };
 
 export const getStoredTrashedProjects = (): TrashedProject[] => {
-  if (typeof window === "undefined") return [];
-  const stored = localStorage.getItem(STORAGE_KEYS.TRASHED_PROJECTS);
-  return stored ? JSON.parse(stored) : [];
+  return getJSON<TrashedProject[]>(STORAGE_KEYS.TRASHED_PROJECTS) ?? [];
 };
 
 export const saveTrashedProjects = (projects: TrashedProject[]): void => {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEYS.TRASHED_PROJECTS, JSON.stringify(projects));
+  setJSON(STORAGE_KEYS.TRASHED_PROJECTS, projects);
 };

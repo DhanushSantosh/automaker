@@ -40,8 +40,7 @@ export default defineConfig({
               PORT: String(serverPort),
               // Enable mock agent in CI to avoid real API calls
               AUTOMAKER_MOCK_AGENT: mockAgent ? "true" : "false",
-              // Allow access to test directories and common project paths
-              ALLOWED_PROJECT_DIRS: "/Users,/home,/tmp,/var/folders",
+              // No ALLOWED_ROOT_DIRECTORY restriction - allow all paths for testing
             },
           },
           // Frontend Vite dev server
@@ -54,7 +53,8 @@ export default defineConfig({
               ...process.env,
               VITE_SKIP_SETUP: "true",
               // Skip electron plugin in CI - no display available for Electron
-              VITE_SKIP_ELECTRON: process.env.CI === "true" ? "true" : undefined,
+              VITE_SKIP_ELECTRON:
+                process.env.CI === "true" ? "true" : undefined,
             },
           },
         ],

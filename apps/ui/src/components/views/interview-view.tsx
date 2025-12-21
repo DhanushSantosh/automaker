@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useAppStore, Feature } from "@/store/app-store";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,6 +19,10 @@ import { Markdown } from "@/components/ui/markdown";
 import { useFileBrowser } from "@/contexts/file-browser-context";
 import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
+import {
+  getDefaultWorkspaceDirectory,
+  saveLastProjectDirectory,
+} from "@/lib/workspace-config";
 
 interface InterviewMessage {
   id: string;
@@ -65,8 +68,7 @@ const INTERVIEW_QUESTIONS = [
 ];
 
 export function InterviewView() {
-  const { addProject, setCurrentProject, setAppSpec } =
-    useAppStore();
+  const { addProject, setCurrentProject, setAppSpec } = useAppStore();
   const { openFileBrowser } = useFileBrowser();
   const navigate = useNavigate();
   const [input, setInput] = useState("");
@@ -88,6 +90,35 @@ export function InterviewView() {
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Default parent directory using workspace config utility
+  useEffect(() => {
+    if (projectPath) return;
+
+    let isMounted = true;
+
+    const loadWorkspaceDir = async () => {
+      try {
+        const defaultDir = await getDefaultWorkspaceDirectory();
+
+        if (!isMounted || projectPath) {
+          return;
+        }
+
+        if (defaultDir) {
+          setProjectPath(defaultDir);
+        }
+      } catch (error) {
+        console.error("Failed to load default workspace directory:", error);
+      }
+    };
+
+    loadWorkspaceDir();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [projectPath]);
 
   // Initialize with first question
   useEffect(() => {
@@ -295,10 +326,12 @@ export function InterviewView() {
       title: "Select Base Directory",
       description:
         "Choose the parent directory where your new project will be created",
+      initialPath: projectPath || undefined,
     });
 
     if (selectedPath) {
       setProjectPath(selectedPath);
+      saveLastProjectDirectory(selectedPath);
     }
   };
 
@@ -308,6 +341,7 @@ export function InterviewView() {
     setIsGenerating(true);
 
     try {
+      saveLastProjectDirectory(projectPath);
       const api = getElectronAPI();
       // Use platform-specific path separator
       const pathSep =
@@ -423,8 +457,8 @@ export function InterviewView() {
                 index < currentQuestionIndex
                   ? "bg-green-500"
                   : index === currentQuestionIndex
-                  ? "bg-primary"
-                  : "bg-zinc-700"
+                    ? "bg-primary"
+                    : "bg-zinc-700"
               )}
             />
           ))}

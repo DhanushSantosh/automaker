@@ -8,6 +8,7 @@ import {
   PanelLeftClose,
 } from "lucide-react";
 import { cn, pathsEqual } from "@/lib/utils";
+import { getItem, setItem } from "@/lib/storage";
 import type { WorktreePanelProps, WorktreeInfo } from "./types";
 import {
   useWorktrees,
@@ -91,13 +92,12 @@ export function WorktreePanel({
 
   // Collapse state with localStorage persistence
   const [isCollapsed, setIsCollapsed] = useState(() => {
-    if (typeof window === "undefined") return false;
-    const saved = localStorage.getItem(WORKTREE_PANEL_COLLAPSED_KEY);
+    const saved = getItem(WORKTREE_PANEL_COLLAPSED_KEY);
     return saved === "true";
   });
 
   useEffect(() => {
-    localStorage.setItem(WORKTREE_PANEL_COLLAPSED_KEY, String(isCollapsed));
+    setItem(WORKTREE_PANEL_COLLAPSED_KEY, String(isCollapsed));
   }, [isCollapsed]);
 
   const toggleCollapsed = () => setIsCollapsed((prev) => !prev);

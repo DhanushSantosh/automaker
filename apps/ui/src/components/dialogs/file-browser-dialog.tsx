@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   FolderOpen,
@@ -21,6 +20,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { getJSON, setJSON } from "@/lib/storage";
+import {
+  getDefaultWorkspaceDirectory,
+  saveLastProjectDirectory,
+} from "@/lib/workspace-config";
 
 interface DirectoryEntry {
   name: string;
@@ -50,38 +54,22 @@ const RECENT_FOLDERS_KEY = "file-browser-recent-folders";
 const MAX_RECENT_FOLDERS = 5;
 
 function getRecentFolders(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const stored = localStorage.getItem(RECENT_FOLDERS_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch {
-    return [];
-  }
+  return getJSON<string[]>(RECENT_FOLDERS_KEY) ?? [];
 }
 
 function addRecentFolder(path: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    const recent = getRecentFolders();
-    // Remove if already exists, then add to front
-    const filtered = recent.filter((p) => p !== path);
-    const updated = [path, ...filtered].slice(0, MAX_RECENT_FOLDERS);
-    localStorage.setItem(RECENT_FOLDERS_KEY, JSON.stringify(updated));
-  } catch {
-    // Ignore localStorage errors
-  }
+  const recent = getRecentFolders();
+  // Remove if already exists, then add to front
+  const filtered = recent.filter((p) => p !== path);
+  const updated = [path, ...filtered].slice(0, MAX_RECENT_FOLDERS);
+  setJSON(RECENT_FOLDERS_KEY, updated);
 }
 
 function removeRecentFolder(path: string): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const recent = getRecentFolders();
-    const updated = recent.filter((p) => p !== path);
-    localStorage.setItem(RECENT_FOLDERS_KEY, JSON.stringify(updated));
-    return updated;
-  } catch {
-    return [];
-  }
+  const recent = getRecentFolders();
+  const updated = recent.filter((p) => p !== path);
+  setJSON(RECENT_FOLDERS_KEY, updated);
+  return updated;
 }
 
 export function FileBrowserDialog({
@@ -110,17 +98,16 @@ export function FileBrowserDialog({
     }
   }, [open]);
 
-  const handleRemoveRecent = useCallback((e: React.MouseEvent, path: string) => {
-    e.stopPropagation();
-    const updated = removeRecentFolder(path);
-    setRecentFolders(updated);
-  }, []);
+  const handleRemoveRecent = useCallback(
+    (e: React.MouseEvent, path: string) => {
+      e.stopPropagation();
+      const updated = removeRecentFolder(path);
+      setRecentFolders(updated);
+    },
+    []
+  );
 
-  const handleSelectRecent = useCallback((path: string) => {
-    browseDirectory(path);
-  }, []);
-
-  const browseDirectory = async (dirPath?: string) => {
+  const browseDirectory = useCallback(async (dirPath?: string) => {
     setLoading(true);
     setError("");
     setWarning("");
@@ -155,7 +142,14 @@ export function FileBrowserDialog({
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const handleSelectRecent = useCallback(
+    (path: string) => {
+      browseDirectory(path);
+    },
+    [browseDirectory]
+  );
 
   // Reset current path when dialog closes
   useEffect(() => {
@@ -169,12 +163,46 @@ export function FileBrowserDialog({
     }
   }, [open]);
 
-  // Load initial path or home directory when dialog opens
+  // Load initial path or workspace directory when dialog opens
   useEffect(() => {
     if (open && !currentPath) {
-      browseDirectory(initialPath);
+      // Priority order:
+      // 1. Last selected directory from this file browser (from localStorage)
+      // 2. initialPath prop (from parent component)
+      // 3. Default workspace directory
+      // 4. Home directory
+      const loadInitialPath = async () => {
+        try {
+          // First, check for last selected directory from getDefaultWorkspaceDirectory
+          // which already implements the priority: last used > Documents/Automaker > DATA_DIR
+          const defaultDir = await getDefaultWorkspaceDirectory();
+
+          // If we have a default directory, use it (unless initialPath is explicitly provided and different)
+          const pathToUse = initialPath || defaultDir;
+
+          if (pathToUse) {
+            // Pre-fill the path input immediately
+            setPathInput(pathToUse);
+            // Then browse to that directory
+            browseDirectory(pathToUse);
+          } else {
+            // No default directory, browse home directory
+            browseDirectory();
+          }
+        } catch (err) {
+          // If config fetch fails, try initialPath or fall back to home directory
+          if (initialPath) {
+            setPathInput(initialPath);
+            browseDirectory(initialPath);
+          } else {
+            browseDirectory();
+          }
+        }
+      };
+
+      loadInitialPath();
     }
-  }, [open, initialPath]);
+  }, [open, initialPath, currentPath, browseDirectory]);
 
   const handleSelectDirectory = (dir: DirectoryEntry) => {
     browseDirectory(dir.path);
@@ -211,6 +239,8 @@ export function FileBrowserDialog({
   const handleSelect = useCallback(() => {
     if (currentPath) {
       addRecentFolder(currentPath);
+      // Save to last project directory so it's used as default next time
+      saveLastProjectDirectory(currentPath);
       onSelect(currentPath);
       onOpenChange(false);
     }
@@ -296,7 +326,9 @@ export function FileBrowserDialog({
                   title={folder}
                 >
                   <Folder className="w-3 h-3 text-brand-500 shrink-0" />
-                  <span className="truncate max-w-[120px]">{getFolderName(folder)}</span>
+                  <span className="truncate max-w-[120px]">
+                    {getFolderName(folder)}
+                  </span>
                   <button
                     onClick={(e) => handleRemoveRecent(e, folder)}
                     className="ml-0.5 opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity"
@@ -417,11 +449,20 @@ export function FileBrowserDialog({
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button size="sm" onClick={handleSelect} disabled={!currentPath || loading} title="Select current folder (Cmd+Enter / Ctrl+Enter)">
+          <Button
+            size="sm"
+            onClick={handleSelect}
+            disabled={!currentPath || loading}
+            title="Select current folder (Cmd+Enter / Ctrl+Enter)"
+          >
             <FolderOpen className="w-3.5 h-3.5 mr-1.5" />
             Select Current Folder
             <kbd className="ml-2 px-1.5 py-0.5 text-[10px] bg-background/50 rounded border border-border">
-              {typeof navigator !== "undefined" && navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+↵
+              {typeof navigator !== "undefined" &&
+              navigator.platform?.includes("Mac")
+                ? "⌘"
+                : "Ctrl"}
+              +↵
             </kbd>
           </Button>
         </DialogFooter>

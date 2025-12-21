@@ -17,10 +17,6 @@ export function createProvidersHandler() {
           available: statuses.claude?.installed || false,
           hasApiKey: !!process.env.ANTHROPIC_API_KEY,
         },
-        google: {
-          available: !!process.env.GOOGLE_API_KEY,
-          hasApiKey: !!process.env.GOOGLE_API_KEY,
-        },
       };
 
       res.json({ success: true, providers });

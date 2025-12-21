@@ -116,7 +116,9 @@ async function startStaticServer(): Promise<void> {
 
   return new Promise((resolve, reject) => {
     staticServer!.listen(STATIC_PORT, () => {
-      console.log(`[Electron] Static server running at http://localhost:${STATIC_PORT}`);
+      console.log(
+        `[Electron] Static server running at http://localhost:${STATIC_PORT}`
+      );
       resolve();
     });
     staticServer!.on("error", reject);
@@ -135,7 +137,10 @@ async function startServer(): Promise<void> {
     command = "node";
     serverPath = path.join(__dirname, "../../server/src/index.ts");
 
-    const serverNodeModules = path.join(__dirname, "../../server/node_modules/tsx");
+    const serverNodeModules = path.join(
+      __dirname,
+      "../../server/node_modules/tsx"
+    );
     const rootNodeModules = path.join(__dirname, "../../../node_modules/tsx");
 
     let tsxCliPath: string;
@@ -170,23 +175,16 @@ async function startServer(): Promise<void> {
     ? path.join(process.resourcesPath, "server", "node_modules")
     : path.join(__dirname, "../../server/node_modules");
 
-  const defaultWorkspaceDir = path.join(app.getPath("documents"), "Automaker");
-
-  if (!fs.existsSync(defaultWorkspaceDir)) {
-    try {
-      fs.mkdirSync(defaultWorkspaceDir, { recursive: true });
-      console.log("[Electron] Created workspace directory:", defaultWorkspaceDir);
-    } catch (error) {
-      console.error("[Electron] Failed to create workspace directory:", error);
-    }
-  }
-
   const env = {
     ...process.env,
     PORT: SERVER_PORT.toString(),
     DATA_DIR: app.getPath("userData"),
     NODE_PATH: serverNodeModules,
-    WORKSPACE_DIR: process.env.WORKSPACE_DIR || defaultWorkspaceDir,
+    // Only set ALLOWED_ROOT_DIRECTORY if explicitly provided in environment
+    // If not set, server will allow access to all paths
+    ...(process.env.ALLOWED_ROOT_DIRECTORY && {
+      ALLOWED_ROOT_DIRECTORY: process.env.ALLOWED_ROOT_DIRECTORY,
+    }),
   };
 
   console.log("[Electron] Starting backend server...");
@@ -324,7 +322,10 @@ app.whenReady().then(async () => {
       try {
         app.dock.setIcon(iconPath);
       } catch (error) {
-        console.warn("[Electron] Failed to set dock icon:", (error as Error).message);
+        console.warn(
+          "[Electron] Failed to set dock icon:",
+          (error as Error).message
+        );
       }
     }
   }
@@ -426,9 +427,12 @@ ipcMain.handle("shell:openPath", async (_, filePath: string) => {
 });
 
 // App info
-ipcMain.handle("app:getPath", async (_, name: Parameters<typeof app.getPath>[0]) => {
-  return app.getPath(name);
-});
+ipcMain.handle(
+  "app:getPath",
+  async (_, name: Parameters<typeof app.getPath>[0]) => {
+    return app.getPath(name);
+  }
+);
 
 ipcMain.handle("app:getVersion", async () => {
   return app.getVersion();
