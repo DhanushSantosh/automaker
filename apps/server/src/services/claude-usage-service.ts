@@ -1,6 +1,4 @@
 import { spawn } from "child_process";
-import * as os from "os";
-import * as pty from "node-pty";
 import { ClaudeUsage } from "../routes/claude/types.js";
 
 /**
@@ -10,7 +8,7 @@ import { ClaudeUsage } from "../routes/claude/types.js";
  * This approach doesn't require any API keys - it relies on the user
  * having already authenticated via `claude login`.
  *
- * Uses node-pty for cross-platform PTY support (Windows, macOS, Linux).
+ * Based on ClaudeBar's implementation approach.
  */
 export class ClaudeUsageService {
   private claudeBinary = "claude";
@@ -21,10 +19,7 @@ export class ClaudeUsageService {
    */
   async isAvailable(): Promise<boolean> {
     return new Promise((resolve) => {
-      const isWindows = os.platform() === "win32";
-      const checkCmd = isWindows ? "where" : "which";
-
-      const proc = spawn(checkCmd, [this.claudeBinary]);
+      const proc = spawn("which", [this.claudeBinary]);
       proc.on("close", (code) => {
         resolve(code === 0);
       });
@@ -44,85 +39,88 @@ export class ClaudeUsageService {
 
   /**
    * Execute the claude /usage command and return the output
-   * Uses node-pty to provide a pseudo-TTY (cross-platform)
+   * Uses 'expect' to provide a pseudo-TTY since claude requires one
    */
   private executeClaudeUsageCommand(): Promise<string> {
     return new Promise((resolve, reject) => {
-      let output = "";
+      let stdout = "";
+      let stderr = "";
       let settled = false;
-      let hasSeenUsageData = false;
 
-      // Use home directory as working directory
-      const workingDirectory = os.homedir() || (os.platform() === "win32" ? process.env.USERPROFILE : "/tmp") || "/tmp";
+      // Use a simple working directory (home or tmp)
+      const workingDirectory = process.env.HOME || "/tmp";
 
-      // Determine shell based on platform
-      const isWindows = os.platform() === "win32";
-      const shell = isWindows ? "cmd.exe" : (process.env.SHELL || "/bin/bash");
-      const shellArgs = isWindows ? ["/c", "claude", "/usage"] : ["-c", "claude /usage"];
+      // Use 'expect' with an inline script to run claude /usage with a PTY
+      // Wait for "Current session" header, then wait for full output before exiting
+      const expectScript = `
+        set timeout 20
+        spawn claude /usage
+        expect {
+          "Current session" {
+            sleep 2
+            send "\\x1b"
+          }
+          "Esc to cancel" {
+            sleep 3
+            send "\\x1b"
+          }
+          timeout {}
+          eof {}
+        }
+        expect eof
+      `;
 
-      const ptyProcess = pty.spawn(shell, shellArgs, {
-        name: "xterm-256color",
-        cols: 120,
-        rows: 30,
+      const proc = spawn("expect", ["-c", expectScript], {
         cwd: workingDirectory,
         env: {
           ...process.env,
           TERM: "xterm-256color",
-        } as Record<string, string>,
+        },
       });
 
       const timeoutId = setTimeout(() => {
         if (!settled) {
           settled = true;
-          ptyProcess.kill();
+          proc.kill();
           reject(new Error("Command timed out"));
         }
       }, this.timeout);
 
-      // Collect output
-      ptyProcess.onData((data) => {
-        output += data;
-
-        // Check if we've seen the usage data (look for "Current session")
-        if (!hasSeenUsageData && output.includes("Current session")) {
-          hasSeenUsageData = true;
-
-          // Wait a bit for full output, then send escape to exit
-          setTimeout(() => {
-            if (!settled) {
-              ptyProcess.write("\x1b"); // Send escape key
-            }
-          }, 2000);
-        }
-
-        // Fallback: if we see "Esc to cancel" but haven't seen usage data yet
-        if (!hasSeenUsageData && output.includes("Esc to cancel")) {
-          setTimeout(() => {
-            if (!settled) {
-              ptyProcess.write("\x1b"); // Send escape key
-            }
-          }, 3000);
-        }
+      proc.stdout.on("data", (data) => {
+        stdout += data.toString();
       });
 
-      ptyProcess.onExit(({ exitCode }) => {
+      proc.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+
+      proc.on("close", (code) => {
         clearTimeout(timeoutId);
         if (settled) return;
         settled = true;
 
         // Check for authentication errors in output
-        if (output.includes("token_expired") || output.includes("authentication_error")) {
+        if (stdout.includes("token_expired") || stdout.includes("authentication_error") ||
+            stderr.includes("token_expired") || stderr.includes("authentication_error")) {
           reject(new Error("Authentication required - please run 'claude login'"));
           return;
         }
 
         // Even if exit code is non-zero, we might have useful output
-        if (output.trim()) {
-          resolve(output);
-        } else if (exitCode !== 0) {
-          reject(new Error(`Command exited with code ${exitCode}`));
+        if (stdout.trim()) {
+          resolve(stdout);
+        } else if (code !== 0) {
+          reject(new Error(stderr || `Command exited with code ${code}`));
         } else {
           reject(new Error("No output from claude command"));
+        }
+      });
+
+      proc.on("error", (err) => {
+        clearTimeout(timeoutId);
+        if (!settled) {
+          settled = true;
+          reject(new Error(`Failed to execute claude: ${err.message}`));
         }
       });
     });
