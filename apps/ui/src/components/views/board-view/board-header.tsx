@@ -81,7 +81,7 @@ export function BoardHeader({
         {isMounted && (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary border border-border">
             <Label htmlFor="auto-mode-toggle" className="text-sm font-medium cursor-pointer">
-              Auto Mode
+              Auto Plus
             </Label>
             <Switch
               id="auto-mode-toggle"

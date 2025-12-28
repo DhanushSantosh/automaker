@@ -499,8 +499,11 @@ export class CursorProvider extends BaseProvider {
 
     // Extract model from options (strip 'cursor-' prefix if present)
     let model = options.model || 'auto';
+    logger.debug(`CursorProvider.executeQuery called with model: "${model}"`);
     if (model.startsWith('cursor-')) {
+      const originalModel = model;
       model = model.substring(7);
+      logger.debug(`Stripped cursor- prefix: "${originalModel}" -> "${model}"`);
     }
 
     const cwd = options.cwd || process.cwd();

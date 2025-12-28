@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resolveModelString, getEffectiveModel } from '../src/resolver';
-import { CLAUDE_MODEL_MAP, DEFAULT_MODELS } from '@automaker/types';
+import { CLAUDE_MODEL_MAP, CURSOR_MODEL_MAP, DEFAULT_MODELS } from '@automaker/types';
 
 describe('model-resolver', () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
@@ -74,7 +74,7 @@ describe('model-resolver', () => {
 
         expect(result).toBe(CLAUDE_MODEL_MAP.sonnet);
         expect(consoleLogSpy).toHaveBeenCalledWith(
-          expect.stringContaining('Resolved model alias: "sonnet"')
+          expect.stringContaining('Resolved Claude model alias: "sonnet"')
         );
       });
 
@@ -83,7 +83,7 @@ describe('model-resolver', () => {
 
         expect(result).toBe(CLAUDE_MODEL_MAP.opus);
         expect(consoleLogSpy).toHaveBeenCalledWith(
-          expect.stringContaining('Resolved model alias: "opus"')
+          expect.stringContaining('Resolved Claude model alias: "opus"')
         );
       });
 
@@ -96,10 +96,66 @@ describe('model-resolver', () => {
       it('should log the resolution for aliases', () => {
         resolveModelString('sonnet');
 
-        expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Resolved model alias'));
+        expect(consoleLogSpy).toHaveBeenCalledWith(
+          expect.stringContaining('Resolved Claude model alias')
+        );
         expect(consoleLogSpy).toHaveBeenCalledWith(
           expect.stringContaining(CLAUDE_MODEL_MAP.sonnet)
         );
+      });
+    });
+
+    describe('with Cursor models', () => {
+      it('should pass through cursor-prefixed model unchanged', () => {
+        const result = resolveModelString('cursor-composer-1');
+
+        expect(result).toBe('cursor-composer-1');
+        expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Using Cursor model'));
+      });
+
+      it('should handle cursor-auto model', () => {
+        const result = resolveModelString('cursor-auto');
+
+        expect(result).toBe('cursor-auto');
+      });
+
+      it('should handle cursor-gpt-4o model', () => {
+        const result = resolveModelString('cursor-gpt-4o');
+
+        expect(result).toBe('cursor-gpt-4o');
+      });
+
+      it('should add cursor- prefix to bare Cursor model IDs', () => {
+        const result = resolveModelString('composer-1');
+
+        expect(result).toBe('cursor-composer-1');
+        expect(consoleLogSpy).toHaveBeenCalledWith(
+          expect.stringContaining('Detected bare Cursor model ID')
+        );
+      });
+
+      it('should add cursor- prefix to auto model', () => {
+        const result = resolveModelString('auto');
+
+        expect(result).toBe('cursor-auto');
+      });
+
+      it('should pass through unknown cursor-prefixed models', () => {
+        const result = resolveModelString('cursor-unknown-future-model');
+
+        expect(result).toBe('cursor-unknown-future-model');
+        expect(consoleLogSpy).toHaveBeenCalledWith(
+          expect.stringContaining('Passing through cursor-prefixed model')
+        );
+      });
+
+      it('should handle all known Cursor model IDs', () => {
+        const cursorModelIds = Object.keys(CURSOR_MODEL_MAP);
+
+        for (const modelId of cursorModelIds) {
+          const result = resolveModelString(`cursor-${modelId}`);
+          expect(result).toBe(`cursor-${modelId}`);
+        }
       });
     });
 
