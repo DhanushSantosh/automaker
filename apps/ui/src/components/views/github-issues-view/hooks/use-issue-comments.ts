@@ -101,6 +101,7 @@ export function useIssueComments(issueNumber: number | null): UseIssueCommentsRe
       setHasNextPage(false);
       setEndCursor(undefined);
       setLoading(false);
+      setError(null);
     }
 
     return () => {

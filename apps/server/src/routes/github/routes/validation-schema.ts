@@ -155,7 +155,7 @@ Be thorough in your analysis but focus on files that are directly relevant to th
 /**
  * Comment data structure for validation prompt
  */
-interface ValidationComment {
+export interface ValidationComment {
   author: string;
   createdAt: string;
   body: string;
@@ -164,7 +164,7 @@ interface ValidationComment {
 /**
  * Linked PR data structure for validation prompt
  */
-interface ValidationLinkedPR {
+export interface ValidationLinkedPR {
   number: number;
   title: string;
   state: string;
@@ -207,7 +207,9 @@ export function buildValidationPrompt(
     // Limit to most recent 10 comments to control prompt size
     const recentComments = comments.slice(-10);
     const commentsText = recentComments
-      .map((c) => `**${c.author}** (${new Date(c.createdAt).toLocaleDateString()}):\n${c.body}`)
+      .map(
+        (c) => `**${c.author}** (${new Date(c.createdAt).toISOString().slice(0, 10)}):\n${c.body}`
+      )
       .join('\n\n---\n\n');
 
     commentsSection = `\n\n### Comments (${comments.length} total${comments.length > 10 ? ', showing last 10' : ''})\n\n${commentsText}`;

@@ -21,6 +21,8 @@ import {
   issueValidationSchema,
   ISSUE_VALIDATION_SYSTEM_PROMPT,
   buildValidationPrompt,
+  ValidationComment,
+  ValidationLinkedPR,
 } from './validation-schema.js';
 import {
   trySetValidationRunning,
@@ -34,24 +36,6 @@ import { getAutoLoadClaudeMdSetting } from '../../../lib/settings-helpers.js';
 
 /** Valid model values for validation */
 const VALID_MODELS: readonly AgentModel[] = ['opus', 'sonnet', 'haiku'] as const;
-
-/**
- * Comment structure for validation prompt
- */
-interface ValidationComment {
-  author: string;
-  createdAt: string;
-  body: string;
-}
-
-/**
- * Linked PR structure for validation prompt
- */
-interface ValidationLinkedPR {
-  number: number;
-  title: string;
-  state: string;
-}
 
 /**
  * Request body for issue validation
