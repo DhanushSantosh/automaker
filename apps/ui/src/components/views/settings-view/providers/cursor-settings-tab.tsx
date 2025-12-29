@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { getHttpApiClient } from '@/lib/http-api-client';
 import { useAppStore } from '@/store/app-store';
 import { cn } from '@/lib/utils';
-import type { CursorModelId, CursorModelConfig, CursorCliConfig } from '@automaker/types';
+import type { CursorModelId, CursorModelConfig } from '@automaker/types';
 import { CURSOR_MODEL_MAP } from '@automaker/types';
 import {
   CursorCliStatus,
@@ -30,12 +30,16 @@ interface CursorStatus {
 }
 
 export function CursorSettingsTab() {
-  const { currentProject } = useAppStore();
+  // Global settings from store
+  const { enabledCursorModels, cursorDefaultModel, setCursorDefaultModel, toggleCursorModel } =
+    useAppStore();
+
   const [status, setStatus] = useState<CursorStatus | null>(null);
-  const [config, setConfig] = useState<CursorCliConfig | null>(null);
-  const [availableModels, setAvailableModels] = useState<CursorModelConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+
+  // All available models from the model map
+  const availableModels: CursorModelConfig[] = Object.values(CURSOR_MODEL_MAP);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -51,59 +55,23 @@ export function CursorSettingsTab() {
           method: statusResult.auth?.method,
         });
       }
-
-      // Only load config if we have a project path
-      if (currentProject?.path) {
-        const configResult = await api.setup.getCursorConfig(currentProject.path);
-        if (configResult.success) {
-          setConfig({
-            defaultModel: configResult.config?.defaultModel as CursorModelId | undefined,
-            models: configResult.config?.models as CursorModelId[] | undefined,
-            mcpServers: configResult.config?.mcpServers,
-            rules: configResult.config?.rules,
-          });
-          if (configResult.availableModels) {
-            setAvailableModels(configResult.availableModels as CursorModelConfig[]);
-          } else {
-            setAvailableModels(Object.values(CURSOR_MODEL_MAP));
-          }
-        } else {
-          // Set defaults if no config
-          setAvailableModels(Object.values(CURSOR_MODEL_MAP));
-        }
-      } else {
-        // No project, just show available models
-        setAvailableModels(Object.values(CURSOR_MODEL_MAP));
-      }
     } catch (error) {
       console.error('Failed to load Cursor settings:', error);
       toast.error('Failed to load Cursor settings');
     } finally {
       setIsLoading(false);
     }
-  }, [currentProject?.path]);
+  }, []);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  const handleDefaultModelChange = async (model: CursorModelId) => {
-    if (!currentProject?.path) {
-      toast.error('No project selected');
-      return;
-    }
-
+  const handleDefaultModelChange = (model: CursorModelId) => {
     setIsSaving(true);
     try {
-      const api = getHttpApiClient();
-      const result = await api.setup.setCursorDefaultModel(currentProject.path, model);
-
-      if (result.success) {
-        setConfig((prev) => (prev ? { ...prev, defaultModel: model } : { defaultModel: model }));
-        toast.success('Default model updated');
-      } else {
-        toast.error(result.error || 'Failed to update default model');
-      }
+      setCursorDefaultModel(model);
+      toast.success('Default model updated');
     } catch (error) {
       toast.error('Failed to update default model');
     } finally {
@@ -111,27 +79,10 @@ export function CursorSettingsTab() {
     }
   };
 
-  const handleModelToggle = async (model: CursorModelId, enabled: boolean) => {
-    if (!currentProject?.path) {
-      toast.error('No project selected');
-      return;
-    }
-
-    const currentModels = config?.models || ['auto'];
-    const newModels = enabled
-      ? [...currentModels, model]
-      : currentModels.filter((m) => m !== model);
-
+  const handleModelToggle = (model: CursorModelId, enabled: boolean) => {
     setIsSaving(true);
     try {
-      const api = getHttpApiClient();
-      const result = await api.setup.setCursorModels(currentProject.path, newModels);
-
-      if (result.success) {
-        setConfig((prev) => (prev ? { ...prev, models: newModels } : { models: newModels }));
-      } else {
-        toast.error(result.error || 'Failed to update models');
-      }
+      toggleCursorModel(model, enabled);
     } catch (error) {
       toast.error('Failed to update models');
     } finally {
@@ -174,8 +125,8 @@ export function CursorSettingsTab() {
       {/* CLI Status */}
       <CursorCliStatus status={status} isChecking={isLoading} onRefresh={loadData} />
 
-      {/* Model Configuration */}
-      {status?.installed && currentProject && (
+      {/* Model Configuration - Always show (global settings) */}
+      {status?.installed && (
         <div
           className={cn(
             'rounded-2xl overflow-hidden',
@@ -194,7 +145,7 @@ export function CursorSettingsTab() {
               </h2>
             </div>
             <p className="text-sm text-muted-foreground/80 ml-12">
-              Configure which Cursor models are available and set the default
+              Configure which Cursor models are available in the feature modal
             </p>
           </div>
           <div className="p-6 space-y-6">
@@ -202,7 +153,7 @@ export function CursorSettingsTab() {
             <div className="space-y-2">
               <Label>Default Model</Label>
               <Select
-                value={config?.defaultModel || 'auto'}
+                value={cursorDefaultModel}
                 onValueChange={(v) => handleDefaultModelChange(v as CursorModelId)}
                 disabled={isSaving}
               >
@@ -210,8 +161,8 @@ export function CursorSettingsTab() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(config?.models || ['auto']).map((modelId) => {
-                    const model = CURSOR_MODEL_MAP[modelId as CursorModelId];
+                  {enabledCursorModels.map((modelId) => {
+                    const model = CURSOR_MODEL_MAP[modelId];
                     if (!model) return null;
                     return (
                       <SelectItem key={modelId} value={modelId}>
@@ -235,7 +186,7 @@ export function CursorSettingsTab() {
               <Label>Available Models</Label>
               <div className="grid gap-3">
                 {availableModels.map((model) => {
-                  const isEnabled = config?.models?.includes(model.id) ?? model.id === 'auto';
+                  const isEnabled = enabledCursorModels.includes(model.id);
                   const isAuto = model.id === 'auto';
 
                   return (
@@ -269,26 +220,6 @@ export function CursorSettingsTab() {
                 })}
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* No Project Selected */}
-      {status?.installed && !currentProject && (
-        <div
-          className={cn(
-            'rounded-2xl overflow-hidden',
-            'border border-border/50',
-            'bg-gradient-to-br from-card/90 via-card/70 to-card/80 backdrop-blur-xl',
-            'shadow-sm shadow-black/5'
-          )}
-        >
-          <div className="p-8 text-center text-muted-foreground">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500/10 to-brand-600/5 flex items-center justify-center border border-brand-500/10 mx-auto mb-4">
-              <Terminal className="w-6 h-6 text-brand-500/50" />
-            </div>
-            <p className="font-medium">No project selected</p>
-            <p className="text-sm mt-2">Select a project to configure Cursor models.</p>
           </div>
         </div>
       )}

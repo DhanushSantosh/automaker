@@ -1,8 +1,10 @@
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Brain, Bot, Terminal } from 'lucide-react';
+import { Brain, Bot, Terminal, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AgentModel } from '@/store/app-store';
+import { useAppStore } from '@/store/app-store';
+import { useSetupStore } from '@/store/setup-store';
 import type { ModelProvider } from '@automaker/types';
 import { CLAUDE_MODELS, CURSOR_MODELS, ModelOption } from './model-constants';
 
@@ -27,12 +29,25 @@ export function ModelSelector({
   onModelSelect,
   testIdPrefix = 'model-select',
 }: ModelSelectorProps) {
+  const { enabledCursorModels, cursorDefaultModel } = useAppStore();
+  const { cursorCliStatus } = useSetupStore();
+
   const selectedProvider = getProviderFromModelString(selectedModel);
+
+  // Check if Cursor CLI is available
+  const isCursorAvailable = cursorCliStatus?.installed && cursorCliStatus?.auth?.authenticated;
+
+  // Filter Cursor models based on enabled models from global settings
+  const filteredCursorModels = CURSOR_MODELS.filter((model) => {
+    // Extract the cursor model ID from the prefixed ID (e.g., "cursor-auto" -> "auto")
+    const cursorModelId = model.id.replace('cursor-', '');
+    return enabledCursorModels.includes(cursorModelId as any);
+  });
 
   const handleProviderChange = (provider: ModelProvider) => {
     if (provider === 'cursor' && selectedProvider !== 'cursor') {
-      // Switch to Cursor's default model
-      onModelSelect('cursor-auto');
+      // Switch to Cursor's default model (from global settings)
+      onModelSelect(`cursor-${cursorDefaultModel}`);
     } else if (provider === 'claude' && selectedProvider !== 'claude') {
       // Switch to Claude's default model
       onModelSelect('sonnet');
@@ -117,6 +132,17 @@ export function ModelSelector({
       {/* Cursor Models */}
       {selectedProvider === 'cursor' && (
         <div className="space-y-3">
+          {/* Warning when Cursor CLI is not available */}
+          {!isCursorAvailable && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+              <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+              <div className="text-sm text-amber-400">
+                Cursor CLI is not installed or authenticated. Configure it in Settings → AI
+                Providers.
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <Label className="flex items-center gap-2">
               <Terminal className="w-4 h-4 text-primary" />
@@ -127,49 +153,55 @@ export function ModelSelector({
             </span>
           </div>
           <div className="flex flex-col gap-2">
-            {CURSOR_MODELS.map((option) => {
-              const isSelected = selectedModel === option.id;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => onModelSelect(option.id)}
-                  title={option.description}
-                  className={cn(
-                    'w-full px-3 py-2 rounded-md border text-sm font-medium transition-colors flex items-center justify-between',
-                    isSelected
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background hover:bg-accent border-border'
-                  )}
-                  data-testid={`${testIdPrefix}-${option.id}`}
-                >
-                  <span>{option.label}</span>
-                  <div className="flex gap-1">
-                    {option.hasThinking && (
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          'text-xs',
-                          isSelected
-                            ? 'border-primary-foreground/50 text-primary-foreground'
-                            : 'border-amber-500/50 text-amber-600 dark:text-amber-400'
-                        )}
-                      >
-                        Thinking
-                      </Badge>
+            {filteredCursorModels.length === 0 ? (
+              <div className="text-sm text-muted-foreground p-3 border border-dashed rounded-md text-center">
+                No Cursor models enabled. Enable models in Settings → AI Providers.
+              </div>
+            ) : (
+              filteredCursorModels.map((option) => {
+                const isSelected = selectedModel === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => onModelSelect(option.id)}
+                    title={option.description}
+                    className={cn(
+                      'w-full px-3 py-2 rounded-md border text-sm font-medium transition-colors flex items-center justify-between',
+                      isSelected
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background hover:bg-accent border-border'
                     )}
-                    {option.tier && (
-                      <Badge
-                        variant={option.tier === 'free' ? 'default' : 'secondary'}
-                        className={cn('text-xs', isSelected && 'bg-primary-foreground/20')}
-                      >
-                        {option.tier}
-                      </Badge>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+                    data-testid={`${testIdPrefix}-${option.id}`}
+                  >
+                    <span>{option.label}</span>
+                    <div className="flex gap-1">
+                      {option.hasThinking && (
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'text-xs',
+                            isSelected
+                              ? 'border-primary-foreground/50 text-primary-foreground'
+                              : 'border-amber-500/50 text-amber-600 dark:text-amber-400'
+                          )}
+                        >
+                          Thinking
+                        </Badge>
+                      )}
+                      {option.tier && (
+                        <Badge
+                          variant={option.tier === 'free' ? 'default' : 'secondary'}
+                          className={cn('text-xs', isSelected && 'bg-primary-foreground/20')}
+                        >
+                          {option.tier}
+                        </Badge>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
           </div>
         </div>
       )}

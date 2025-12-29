@@ -8,7 +8,7 @@
 
 import type { AgentModel } from './model.js';
 import type { CursorModelId } from './cursor-models.js';
-import { CURSOR_MODEL_MAP } from './cursor-models.js';
+import { CURSOR_MODEL_MAP, getAllCursorModelIds } from './cursor-models.js';
 
 // Re-export AgentModel for convenience
 export type { AgentModel };
@@ -304,6 +304,12 @@ export interface GlobalSettings {
   /** Which model to use for GitHub issue validation */
   validationModel: AgentModel;
 
+  // Cursor CLI Settings (global)
+  /** Which Cursor models are available in feature modal (empty = all) */
+  enabledCursorModels: CursorModelId[];
+  /** Default Cursor model selection when switching to Cursor CLI */
+  cursorDefaultModel: CursorModelId;
+
   // Input Configuration
   /** User's keyboard shortcut bindings */
   keyboardShortcuts: KeyboardShortcuts;
@@ -488,6 +494,8 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   muteDoneSound: false,
   enhancementModel: 'sonnet',
   validationModel: 'opus',
+  enabledCursorModels: getAllCursorModelIds(),
+  cursorDefaultModel: 'auto',
   keyboardShortcuts: DEFAULT_KEYBOARD_SHORTCUTS,
   aiProfiles: [],
   projects: [],

@@ -7,7 +7,9 @@ import type {
   AgentModel,
   PlanningMode,
   AIProfile,
+  CursorModelId,
 } from '@automaker/types';
+import { getAllCursorModelIds } from '@automaker/types';
 
 // Re-export ThemeMode for convenience
 export type { ThemeMode };
@@ -478,6 +480,10 @@ export interface AppState {
   // Validation Model Settings
   validationModel: AgentModel; // Model used for GitHub issue validation (default: opus)
 
+  // Cursor CLI Settings (global)
+  enabledCursorModels: CursorModelId[]; // Which Cursor models are available in feature modal
+  cursorDefaultModel: CursorModelId; // Default Cursor model selection
+
   // Claude Agent SDK Settings
   autoLoadClaudeMd: boolean; // Auto-load CLAUDE.md files using SDK's settingSources option
 
@@ -754,6 +760,11 @@ export interface AppActions {
   // Validation Model actions
   setValidationModel: (model: AgentModel) => void;
 
+  // Cursor CLI Settings actions
+  setEnabledCursorModels: (models: CursorModelId[]) => void;
+  setCursorDefaultModel: (model: CursorModelId) => void;
+  toggleCursorModel: (model: CursorModelId, enabled: boolean) => void;
+
   // Claude Agent SDK Settings actions
   setAutoLoadClaudeMd: (enabled: boolean) => Promise<void>;
 
@@ -957,6 +968,8 @@ const initialState: AppState = {
   muteDoneSound: false, // Default to sound enabled (not muted)
   enhancementModel: 'sonnet', // Default to sonnet for feature enhancement
   validationModel: 'opus', // Default to opus for GitHub issue validation
+  enabledCursorModels: getAllCursorModelIds(), // All Cursor models enabled by default
+  cursorDefaultModel: 'auto', // Default to auto selection
   autoLoadClaudeMd: false, // Default to disabled (user must opt-in)
   aiProfiles: DEFAULT_AI_PROFILES,
   projectAnalysis: null,
@@ -1582,6 +1595,16 @@ export const useAppStore = create<AppState & AppActions>()(
 
       // Validation Model actions
       setValidationModel: (model) => set({ validationModel: model }),
+
+      // Cursor CLI Settings actions
+      setEnabledCursorModels: (models) => set({ enabledCursorModels: models }),
+      setCursorDefaultModel: (model) => set({ cursorDefaultModel: model }),
+      toggleCursorModel: (model, enabled) =>
+        set((state) => ({
+          enabledCursorModels: enabled
+            ? [...state.enabledCursorModels, model]
+            : state.enabledCursorModels.filter((m) => m !== model),
+        })),
 
       // Claude Agent SDK Settings actions
       setAutoLoadClaudeMd: async (enabled) => {
@@ -2734,6 +2757,8 @@ export const useAppStore = create<AppState & AppActions>()(
           muteDoneSound: state.muteDoneSound,
           enhancementModel: state.enhancementModel,
           validationModel: state.validationModel,
+          enabledCursorModels: state.enabledCursorModels,
+          cursorDefaultModel: state.cursorDefaultModel,
           autoLoadClaudeMd: state.autoLoadClaudeMd,
           // Profiles and sessions
           aiProfiles: state.aiProfiles,

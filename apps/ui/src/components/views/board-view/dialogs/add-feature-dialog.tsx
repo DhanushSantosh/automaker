@@ -327,12 +327,23 @@ export function AddFeatureDialog({
     });
   };
 
-  const handleProfileSelect = (model: AgentModel, thinkingLevel: ThinkingLevel) => {
-    setNewFeature({
-      ...newFeature,
-      model,
-      thinkingLevel,
-    });
+  const handleProfileSelect = (profile: AIProfile) => {
+    if (profile.provider === 'cursor') {
+      // Cursor profile - set cursor model
+      const cursorModel = `cursor-${profile.cursorModel || 'auto'}`;
+      setNewFeature({
+        ...newFeature,
+        model: cursorModel as AgentModel,
+        thinkingLevel: 'none', // Cursor handles thinking internally
+      });
+    } else {
+      // Claude profile
+      setNewFeature({
+        ...newFeature,
+        model: profile.model || 'sonnet',
+        thinkingLevel: profile.thinkingLevel || 'none',
+      });
+    }
   };
 
   // Cursor models handle thinking internally, so only show thinking selector for Claude models
@@ -529,6 +540,7 @@ export function AddFeatureDialog({
               profiles={aiProfiles}
               selectedModel={newFeature.model}
               selectedThinkingLevel={newFeature.thinkingLevel}
+              selectedCursorModel={isCursorModel ? newFeature.model : undefined}
               onSelect={handleProfileSelect}
               showManageLink
               onManageLinkClick={() => {
