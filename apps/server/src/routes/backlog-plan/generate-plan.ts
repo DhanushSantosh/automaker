@@ -1,9 +1,13 @@
 /**
  * Generate backlog plan using Claude AI
+ *
+ * Model is configurable via phaseModels.backlogPlanningModel in settings
+ * (defaults to Sonnet). Can be overridden per-call via model parameter.
  */
 
 import type { EventEmitter } from '../../lib/events.js';
 import type { Feature, BacklogPlanResult, BacklogChange, DependencyUpdate } from '@automaker/types';
+import { DEFAULT_PHASE_MODELS } from '@automaker/types';
 import { FeatureLoader } from '../../services/feature-loader.js';
 import { ProviderFactory } from '../../providers/provider-factory.js';
 import { logger, setRunningState, getErrorMessage } from './common.js';
@@ -151,8 +155,15 @@ Please analyze the current backlog and the user's request, then provide a JSON p
       content: 'Generating plan with AI...',
     });
 
-    // Get the model to use
-    const effectiveModel = model || 'sonnet';
+    // Get the model to use from settings or provided override
+    let effectiveModel = model;
+    if (!effectiveModel) {
+      const settings = await settingsService?.getGlobalSettings();
+      effectiveModel =
+        settings?.phaseModels?.backlogPlanningModel || DEFAULT_PHASE_MODELS.backlogPlanningModel;
+    }
+    logger.info('[BacklogPlan] Using model:', effectiveModel);
+
     const provider = ProviderFactory.getProviderForModel(effectiveModel);
 
     // Get autoLoadClaudeMd setting
