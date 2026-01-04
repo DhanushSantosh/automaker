@@ -15,10 +15,26 @@ import type {
 } from '@automaker/types';
 import { ProviderFactory } from '@/providers/provider-factory.js';
 
+// Create a shared mock logger instance for assertions using vi.hoisted
+const mockLogger = vi.hoisted(() => ({
+  info: vi.fn(),
+  error: vi.fn(),
+  warn: vi.fn(),
+  debug: vi.fn(),
+}));
+
 // Mock dependencies
 vi.mock('@/lib/secure-fs.js');
 vi.mock('@automaker/platform');
-vi.mock('@automaker/utils');
+vi.mock('@automaker/utils', async () => {
+  const actual = await vi.importActual<typeof import('@automaker/utils')>('@automaker/utils');
+  return {
+    ...actual,
+    createLogger: vi.fn(() => mockLogger),
+    loadContextFiles: vi.fn(),
+    isAbortError: vi.fn(),
+  };
+});
 vi.mock('@/providers/provider-factory.js');
 vi.mock('@/lib/sdk-options.js', () => ({
   createChatOptions: vi.fn(() => ({
@@ -56,7 +72,9 @@ describe('IdeationService', () => {
 
     // Mock platform functions
     vi.mocked(platform.ensureIdeationDir).mockResolvedValue(undefined);
-    vi.mocked(platform.getIdeaDir).mockReturnValue('/test/project/.automaker/ideation/ideas/idea-123');
+    vi.mocked(platform.getIdeaDir).mockReturnValue(
+      '/test/project/.automaker/ideation/ideas/idea-123'
+    );
     vi.mocked(platform.getIdeaPath).mockReturnValue(
       '/test/project/.automaker/ideation/ideas/idea-123/idea.json'
     );
@@ -71,7 +89,7 @@ describe('IdeationService', () => {
       '/test/project/.automaker/ideation/analysis.json'
     );
 
-    // Mock utils
+    // Mock utils (already mocked above, but reset return values)
     vi.mocked(utils.loadContextFiles).mockResolvedValue({
       formattedPrompt: 'Test context',
       files: [],
@@ -497,7 +515,7 @@ describe('IdeationService', () => {
           id: 'idea-123',
           title: 'Add Dark Mode',
           description: 'Implement dark mode theme',
-          category: 'features',
+          category: 'feature',
           status: 'refined',
           impact: 'high',
           effort: 'medium',
@@ -613,7 +631,14 @@ describe('IdeationService', () => {
       });
 
       it('should emit error event on failure', async () => {
-        vi.mocked(secureFs.readFile).mockRejectedValue(new Error('Read failed'));
+        // Mock writeFile to fail (this is called after gatherProjectStructure and isn't caught)
+        vi.mocked(secureFs.readFile).mockResolvedValue(
+          JSON.stringify({
+            name: 'test-project',
+            dependencies: {},
+          })
+        );
+        vi.mocked(secureFs.writeFile).mockRejectedValue(new Error('Write failed'));
 
         await expect(service.analyzeProject(testProjectPath)).rejects.toThrow();
 
@@ -665,7 +690,7 @@ describe('IdeationService', () => {
         expect(Array.isArray(categories)).toBe(true);
         expect(categories.length).toBeGreaterThan(0);
         expect(categories[0]).toHaveProperty('id');
-        expect(categories[0]).toHaveProperty('label');
+        expect(categories[0]).toHaveProperty('name');
       });
     });
 

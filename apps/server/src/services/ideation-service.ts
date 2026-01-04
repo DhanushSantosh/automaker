@@ -1631,7 +1631,7 @@ Focus on practical, implementable suggestions that would genuinely improve the p
 
   private mapIdeaCategoryToFeatureCategory(category: IdeaCategory): string {
     const mapping: Record<IdeaCategory, string> = {
-      feature: 'feature',
+      feature: 'ui',
       'ux-ui': 'enhancement',
       dx: 'chore',
       growth: 'feature',
@@ -1674,6 +1674,6 @@ Focus on practical, implementable suggestions that would genuinely improve the p
   }
 
   private generateId(prefix: string): string {
-    return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   }
 }
