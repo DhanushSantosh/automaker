@@ -50,7 +50,7 @@ import {
   getEnableSandboxModeSetting,
   filterClaudeMdFromContext,
   getMCPServersFromSettings,
-  getMCPPermissionSettings,
+
   getPromptCustomization,
 } from '../lib/settings-helpers.js';
 
@@ -2070,7 +2070,6 @@ This mock response was generated because AUTOMAKER_MOCK_AGENT=true was set.
     const mcpServers = await getMCPServersFromSettings(this.settingsService, '[AutoMode]');
 
     // Load MCP permission settings (global setting only)
-    const mcpPermissions = await getMCPPermissionSettings(this.settingsService, '[AutoMode]');
 
     // Build SDK options using centralized configuration for feature implementation
     const sdkOptions = createAutoModeOptions({
@@ -2080,8 +2079,6 @@ This mock response was generated because AUTOMAKER_MOCK_AGENT=true was set.
       autoLoadClaudeMd,
       enableSandboxMode,
       mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-      mcpAutoApproveTools: mcpPermissions.mcpAutoApproveTools,
-      mcpUnrestrictedTools: mcpPermissions.mcpUnrestrictedTools,
       thinkingLevel: options?.thinkingLevel,
     });
 
@@ -2125,8 +2122,6 @@ This mock response was generated because AUTOMAKER_MOCK_AGENT=true was set.
       settingSources: sdkOptions.settingSources,
       sandbox: sdkOptions.sandbox, // Pass sandbox configuration
       mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined, // Pass MCP servers configuration
-      mcpAutoApproveTools: mcpPermissions.mcpAutoApproveTools, // Pass MCP auto-approve setting
-      mcpUnrestrictedTools: mcpPermissions.mcpUnrestrictedTools, // Pass MCP unrestricted tools setting
       thinkingLevel: options?.thinkingLevel, // Pass thinking level for extended thinking
     };
 
@@ -2416,8 +2411,6 @@ After generating the revised spec, output:
                           allowedTools: allowedTools,
                           abortController,
                           mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-                          mcpAutoApproveTools: mcpPermissions.mcpAutoApproveTools,
-                          mcpUnrestrictedTools: mcpPermissions.mcpUnrestrictedTools,
                         });
 
                         let revisionText = '';
@@ -2556,8 +2549,6 @@ After generating the revised spec, output:
                       allowedTools: allowedTools,
                       abortController,
                       mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-                      mcpAutoApproveTools: mcpPermissions.mcpAutoApproveTools,
-                      mcpUnrestrictedTools: mcpPermissions.mcpUnrestrictedTools,
                     });
 
                     let taskOutput = '';
@@ -2646,8 +2637,6 @@ Implement all the changes described in the plan above.`;
                     allowedTools: allowedTools,
                     abortController,
                     mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-                    mcpAutoApproveTools: mcpPermissions.mcpAutoApproveTools,
-                    mcpUnrestrictedTools: mcpPermissions.mcpUnrestrictedTools,
                   });
 
                   for await (const msg of continuationStream) {
