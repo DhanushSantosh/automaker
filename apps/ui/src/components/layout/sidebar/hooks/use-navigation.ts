@@ -123,12 +123,6 @@ export function useNavigation({
         icon: Brain,
         shortcut: shortcuts.memory,
       },
-      {
-        id: 'project-settings',
-        label: 'Settings',
-        icon: Settings,
-        shortcut: shortcuts.projectSettings,
-      },
     ];
 
     // Filter out hidden items
@@ -173,6 +167,14 @@ export function useNavigation({
         shortcut: shortcuts.terminal,
       });
     }
+
+    // Add Project Settings to Project section
+    projectItems.push({
+      id: 'project-settings',
+      label: 'Settings',
+      icon: Settings,
+      shortcut: shortcuts.projectSettings,
+    });
 
     const sections: NavSection[] = [
       {
@@ -265,11 +267,11 @@ export function useNavigation({
         });
       });
 
-      // Add settings shortcut
+      // Add global settings shortcut
       shortcutsList.push({
         key: shortcuts.settings,
         action: () => navigate({ to: '/settings' }),
-        description: 'Navigate to Settings',
+        description: 'Navigate to Global Settings',
       });
     }
 
