@@ -28,6 +28,7 @@
   - [Quick Start](#quick-start)
 - [How to Run](#how-to-run)
   - [Development Mode](#development-mode)
+  - [Interactive TUI Launcher](#interactive-tui-launcher-recommended-for-new-users)
   - [Building for Production](#building-for-production)
   - [Testing](#testing)
   - [Linting](#linting)
@@ -178,6 +179,40 @@ npm run dev:electron:wsl:gpu
 # Run in web browser (http://localhost:3007)
 npm run dev:web
 ```
+
+### Interactive TUI Launcher (Recommended for New Users)
+
+For a user-friendly interactive menu, use the built-in TUI launcher script:
+
+```bash
+# Show interactive menu with all launch options
+./start-automaker.sh
+
+# Or launch directly without menu
+./start-automaker.sh web          # Web browser
+./start-automaker.sh electron     # Desktop app
+./start-automaker.sh electron-debug  # Desktop + DevTools
+
+# Additional options
+./start-automaker.sh --help       # Show all available options
+./start-automaker.sh --version    # Show version information
+./start-automaker.sh --check-deps # Verify project dependencies
+./start-automaker.sh --no-colors  # Disable colored output
+./start-automaker.sh --no-history # Don't remember last choice
+```
+
+**Features:**
+
+- 🎨 Beautiful terminal UI with gradient colors and ASCII art
+- ⌨️ Interactive menu (press 1-3 to select, Q to exit)
+- 💾 Remembers your last choice
+- ✅ Pre-flight checks (validates Node.js, npm, dependencies)
+- 📏 Responsive layout (adapts to terminal size)
+- ⏱️ 30-second timeout for hands-free selection
+- 🌐 Cross-shell compatible (bash/zsh)
+
+**History File:**
+Your last selected mode is saved in `~/.automaker_launcher_history` for quick re-runs.
 
 ### Building for Production
 
