@@ -164,9 +164,12 @@ app.use(
         return;
       }
 
+      console.log(`[CORS] Checking origin: ${origin}`);
+
       // If CORS_ORIGIN is set, use it (can be comma-separated list)
       const allowedOrigins = process.env.CORS_ORIGIN?.split(',').map((o) => o.trim());
       if (allowedOrigins && allowedOrigins.length > 0 && allowedOrigins[0] !== '*') {
+        console.log(`[CORS] CORS_ORIGIN env var is set: ${allowedOrigins.join(', ')}`);
         if (allowedOrigins.includes(origin)) {
           callback(null, origin);
         } else {
@@ -176,22 +179,30 @@ app.use(
       }
 
       // For local development, allow all localhost/loopback origins (any port)
-      const url = new URL(origin);
-      const hostname = url.hostname;
-      if (
-        hostname === 'localhost' ||
-        hostname === '127.0.0.1' ||
-        hostname === '::1' ||
-        hostname === '0.0.0.0' ||
-        hostname.startsWith('192.168.') ||
-        hostname.startsWith('10.') ||
-        hostname.startsWith('172.')
-      ) {
-        callback(null, origin);
-        return;
+      try {
+        const url = new URL(origin);
+        const hostname = url.hostname;
+        console.log(`[CORS] Parsed hostname: ${hostname}`);
+
+        if (
+          hostname === 'localhost' ||
+          hostname === '127.0.0.1' ||
+          hostname === '::1' ||
+          hostname === '0.0.0.0' ||
+          hostname.startsWith('192.168.') ||
+          hostname.startsWith('10.') ||
+          hostname.startsWith('172.')
+        ) {
+          console.log(`[CORS] ✓ Allowing origin: ${origin}`);
+          callback(null, origin);
+          return;
+        }
+      } catch (err) {
+        console.error(`[CORS] Error parsing URL: ${origin}`, err);
       }
 
       // Reject other origins by default for security
+      console.log(`[CORS] ✗ Rejecting origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
