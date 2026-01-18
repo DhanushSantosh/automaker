@@ -824,16 +824,21 @@ export class SettingsService {
   }
 
   /**
-   * Migrate settings from legacy Electron userData location to new shared data directory
+   * Migrate entire data directory from legacy Electron userData location to new shared data directory
    *
-   * This handles the migration from when Electron stored settings in the platform-specific
+   * This handles the migration from when Electron stored data in the platform-specific
    * userData directory (e.g., ~/.config/Automaker) to the new shared ./data directory.
    *
    * Migration only occurs if:
    * 1. The new location does NOT have settings.json
    * 2. The legacy location DOES have settings.json
    *
-   * Files migrated: settings.json, credentials.json
+   * Migrates all files and directories including:
+   * - settings.json (global settings)
+   * - credentials.json (API keys)
+   * - sessions-metadata.json (chat session metadata)
+   * - agent-sessions/ (conversation histories)
+   * - Any other files in the data directory
    *
    * @returns Promise resolving to migration result
    */
@@ -853,7 +858,7 @@ export class SettingsService {
       return { migrated: false, migratedFiles, legacyPath, errors };
     }
 
-    logger.info(`Checking for legacy settings migration from: ${legacyPath}`);
+    logger.info(`Checking for legacy data migration from: ${legacyPath}`);
     logger.info(`Current data directory: ${this.dataDir}`);
 
     // Check if new settings already exist
@@ -871,7 +876,7 @@ export class SettingsService {
       return { migrated: false, migratedFiles, legacyPath, errors };
     }
 
-    // Check if legacy settings exist
+    // Check if legacy directory exists and has settings
     const legacySettingsPath = path.join(legacyPath, 'settings.json');
     let legacySettingsExist = false;
     try {
@@ -886,8 +891,8 @@ export class SettingsService {
       return { migrated: false, migratedFiles, legacyPath, errors };
     }
 
-    // Perform migration
-    logger.info('Found legacy settings, migrating to new location...');
+    // Perform migration of entire directory
+    logger.info('Found legacy data directory, migrating all contents to new location...');
 
     // Ensure new data directory exists
     try {
@@ -899,35 +904,12 @@ export class SettingsService {
       return { migrated: false, migratedFiles, legacyPath, errors };
     }
 
-    // Migrate settings.json
-    try {
-      const settingsContent = await fs.readFile(legacySettingsPath, 'utf-8');
-      await fs.writeFile(newSettingsPath, settingsContent, 'utf-8');
-      migratedFiles.push('settings.json');
-      logger.info('Migrated settings.json from legacy location');
-    } catch (error) {
-      const msg = `Failed to migrate settings.json: ${error}`;
-      logger.error(msg);
-      errors.push(msg);
-    }
-
-    // Migrate credentials.json if it exists
-    const legacyCredentialsPath = path.join(legacyPath, 'credentials.json');
-    const newCredentialsPath = getCredentialsPath(this.dataDir);
-    try {
-      await fs.access(legacyCredentialsPath);
-      const credentialsContent = await fs.readFile(legacyCredentialsPath, 'utf-8');
-      await fs.writeFile(newCredentialsPath, credentialsContent, 'utf-8');
-      migratedFiles.push('credentials.json');
-      logger.info('Migrated credentials.json from legacy location');
-    } catch {
-      // Credentials file doesn't exist in legacy location, that's fine
-      logger.debug('No legacy credentials.json found');
-    }
+    // Recursively copy all files and directories
+    await this.copyDirectoryContents(legacyPath, this.dataDir, migratedFiles, errors);
 
     if (migratedFiles.length > 0) {
       logger.info(
-        `Migration complete. Migrated ${migratedFiles.length} file(s): ${migratedFiles.join(', ')}`
+        `Migration complete. Migrated ${migratedFiles.length} item(s): ${migratedFiles.join(', ')}`
       );
       logger.info(`Legacy path: ${legacyPath}`);
       logger.info(`New path: ${this.dataDir}`);
@@ -939,5 +921,77 @@ export class SettingsService {
       legacyPath,
       errors,
     };
+  }
+
+  /**
+   * Recursively copy directory contents from source to destination
+   *
+   * @param srcDir - Source directory path
+   * @param destDir - Destination directory path
+   * @param migratedFiles - Array to track migrated files
+   * @param errors - Array to track errors
+   * @param relativePath - Current relative path for logging
+   */
+  private async copyDirectoryContents(
+    srcDir: string,
+    destDir: string,
+    migratedFiles: string[],
+    errors: string[],
+    relativePath: string = ''
+  ): Promise<void> {
+    try {
+      const entries = await fs.readdir(srcDir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const srcPath = path.join(srcDir, entry.name);
+        const destPath = path.join(destDir, entry.name);
+        const itemRelativePath = relativePath ? path.join(relativePath, entry.name) : entry.name;
+
+        // Skip if destination already exists
+        try {
+          await fs.access(destPath);
+          logger.debug(`Skipping ${itemRelativePath} - already exists in destination`);
+          continue;
+        } catch {
+          // Destination doesn't exist, proceed with copy
+        }
+
+        if (entry.isDirectory()) {
+          // Create directory and recursively copy contents
+          try {
+            await fs.mkdir(destPath, { recursive: true });
+            await this.copyDirectoryContents(
+              srcPath,
+              destPath,
+              migratedFiles,
+              errors,
+              itemRelativePath
+            );
+            migratedFiles.push(itemRelativePath + '/');
+            logger.info(`Migrated directory: ${itemRelativePath}/`);
+          } catch (error) {
+            const msg = `Failed to migrate directory ${itemRelativePath}: ${error}`;
+            logger.error(msg);
+            errors.push(msg);
+          }
+        } else if (entry.isFile()) {
+          // Copy file
+          try {
+            const content = await fs.readFile(srcPath);
+            await fs.writeFile(destPath, content);
+            migratedFiles.push(itemRelativePath);
+            logger.info(`Migrated file: ${itemRelativePath}`);
+          } catch (error) {
+            const msg = `Failed to migrate file ${itemRelativePath}: ${error}`;
+            logger.error(msg);
+            errors.push(msg);
+          }
+        }
+      }
+    } catch (error) {
+      const msg = `Failed to read directory ${srcDir}: ${error}`;
+      logger.error(msg);
+      errors.push(msg);
+    }
   }
 }
