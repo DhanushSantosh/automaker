@@ -25,6 +25,7 @@ export function useProjectSettingsLoader() {
   const setAutoDismissInitScriptIndicator = useAppStore(
     (state) => state.setAutoDismissInitScriptIndicator
   );
+  const setCurrentProject = useAppStore((state) => state.setCurrentProject);
 
   const appliedProjectRef = useRef<string | null>(null);
 
@@ -90,6 +91,21 @@ export function useProjectSettingsLoader() {
     if (settings.autoDismissInitScriptIndicator !== undefined) {
       setAutoDismissInitScriptIndicator(projectPath, settings.autoDismissInitScriptIndicator);
     }
+
+    // Apply activeClaudeApiProfileId if present
+    if (settings.activeClaudeApiProfileId !== undefined) {
+      const updatedProject = useAppStore.getState().currentProject;
+      if (
+        updatedProject &&
+        updatedProject.path === projectPath &&
+        updatedProject.activeClaudeApiProfileId !== settings.activeClaudeApiProfileId
+      ) {
+        setCurrentProject({
+          ...updatedProject,
+          activeClaudeApiProfileId: settings.activeClaudeApiProfileId,
+        });
+      }
+    }
   }, [
     currentProject?.path,
     settings,
@@ -105,5 +121,6 @@ export function useProjectSettingsLoader() {
     setShowInitScriptIndicator,
     setDefaultDeleteBranch,
     setAutoDismissInitScriptIndicator,
+    setCurrentProject,
   ]);
 }

@@ -50,7 +50,7 @@ export function useBoardFeatures({ currentProject }: UseBoardFeaturesProps) {
     } catch {
       setPersistedCategories([]);
     }
-  }, [currentProject]);
+  }, [currentProject, loadFeatures]);
 
   // Save a new category to the persisted categories file
   const saveCategory = useCallback(
@@ -87,11 +87,33 @@ export function useBoardFeatures({ currentProject }: UseBoardFeaturesProps) {
 
     const { removeRunningTask } = useAppStore.getState();
     const projectId = currentProject.id;
+    const projectPath = currentProject.path;
 
     const unsubscribe = api.autoMode.onEvent((event) => {
+      // Check if event is for the current project by matching projectPath
+      const eventProjectPath = ('projectPath' in event && event.projectPath) as string | undefined;
+      if (eventProjectPath && eventProjectPath !== projectPath) {
+        // Event is for a different project, ignore it
+        logger.debug(
+          `Ignoring auto mode event for different project: ${eventProjectPath} (current: ${projectPath})`
+        );
+        return;
+      }
+
+      // Use event's projectPath or projectId if available, otherwise use current project
+      // Board view only reacts to events for the currently selected project
       const eventProjectId = ('projectId' in event && event.projectId) || projectId;
 
-      if (event.type === 'auto_mode_feature_complete') {
+      if (event.type === 'auto_mode_feature_start') {
+        // Reload features when a feature starts to ensure status update (backlog -> in_progress) is reflected
+        logger.info(
+          `[BoardFeatures] Feature ${event.featureId} started for project ${projectPath}, reloading features to update status...`
+        );
+        loadFeatures();
+      } else if (event.type === 'auto_mode_feature_complete') {
+        // Reload features when a feature is completed
+        logger.info('Feature completed, reloading features...');
+        loadFeatures();
         // Play ding sound when feature is done (unless muted)
         const { muteDoneSound } = useAppStore.getState();
         if (!muteDoneSound) {

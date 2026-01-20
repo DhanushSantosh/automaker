@@ -41,7 +41,12 @@ import {
   CREDENTIALS_VERSION,
   PROJECT_SETTINGS_VERSION,
 } from '../types/settings.js';
-import { migrateModelId, migrateCursorModelIds, migrateOpencodeModelIds } from '@automaker/types';
+import {
+  DEFAULT_MAX_CONCURRENCY,
+  migrateModelId,
+  migrateCursorModelIds,
+  migrateOpencodeModelIds,
+} from '@automaker/types';
 
 const logger = createLogger('SettingsService');
 
@@ -163,6 +168,41 @@ export class SettingsService {
       if (settings.setupComplete === undefined) result.setupComplete = true;
       if (settings.isFirstRun === undefined) result.isFirstRun = false;
       if (settings.skipClaudeSetup === undefined) result.skipClaudeSetup = false;
+      needsSave = true;
+    }
+
+    // Migration v4 -> v5: Auto-create "Direct Anthropic" profile for existing users
+    // If user has an Anthropic API key in credentials but no profiles, create a
+    // "Direct Anthropic" profile that references the credentials and set it as active.
+    if (storedVersion < 5) {
+      try {
+        const credentials = await this.getCredentials();
+        const hasAnthropicKey = !!credentials.apiKeys?.anthropic;
+        const hasNoProfiles = !result.claudeApiProfiles || result.claudeApiProfiles.length === 0;
+        const hasNoActiveProfile = !result.activeClaudeApiProfileId;
+
+        if (hasAnthropicKey && hasNoProfiles && hasNoActiveProfile) {
+          const directAnthropicProfile = {
+            id: `profile-${Date.now()}-direct-anthropic`,
+            name: 'Direct Anthropic',
+            baseUrl: 'https://api.anthropic.com',
+            apiKeySource: 'credentials' as const,
+            useAuthToken: false,
+          };
+
+          result.claudeApiProfiles = [directAnthropicProfile];
+          result.activeClaudeApiProfileId = directAnthropicProfile.id;
+
+          logger.info(
+            'Migration v4->v5: Created "Direct Anthropic" profile using existing credentials'
+          );
+        }
+      } catch (error) {
+        logger.warn(
+          'Migration v4->v5: Could not check credentials for auto-profile creation:',
+          error
+        );
+      }
       needsSave = true;
     }
 
@@ -372,6 +412,7 @@ export class SettingsService {
     ignoreEmptyArrayOverwrite('recentFolders');
     ignoreEmptyArrayOverwrite('mcpServers');
     ignoreEmptyArrayOverwrite('enabledCursorModels');
+    ignoreEmptyArrayOverwrite('claudeApiProfiles');
 
     // Empty object overwrite guard
     if (
@@ -597,6 +638,17 @@ export class SettingsService {
       };
     }
 
+    // Handle activeClaudeApiProfileId special cases:
+    // - "__USE_GLOBAL__" marker means delete the key (use global setting)
+    // - null means explicit "Direct Anthropic API"
+    // - string means specific profile ID
+    if (
+      'activeClaudeApiProfileId' in updates &&
+      updates.activeClaudeApiProfileId === '__USE_GLOBAL__'
+    ) {
+      delete updated.activeClaudeApiProfileId;
+    }
+
     await writeSettingsJson(settingsPath, updated);
     logger.info(`Project settings updated for ${projectPath}`);
 
@@ -682,7 +734,7 @@ export class SettingsService {
         theme: (appState.theme as GlobalSettings['theme']) || 'dark',
         sidebarOpen: appState.sidebarOpen !== undefined ? (appState.sidebarOpen as boolean) : true,
         chatHistoryOpen: (appState.chatHistoryOpen as boolean) || false,
-        maxConcurrency: (appState.maxConcurrency as number) || 3,
+        maxConcurrency: (appState.maxConcurrency as number) || DEFAULT_MAX_CONCURRENCY,
         defaultSkipTests:
           appState.defaultSkipTests !== undefined ? (appState.defaultSkipTests as boolean) : true,
         enableDependencyBlocking:

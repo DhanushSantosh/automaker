@@ -28,6 +28,7 @@ import type {
   UpdateIdeaInput,
   ConvertToFeatureOptions,
 } from '@automaker/types';
+import { DEFAULT_MAX_CONCURRENCY } from '@automaker/types';
 import { getJSON, setJSON, removeItem } from './storage';
 
 // Re-export issue validation types for use in components
@@ -479,20 +480,26 @@ export interface FeaturesAPI {
     featureId: string
   ) => Promise<{ success: boolean; content?: string | null; error?: string }>;
   generateTitle: (
-    description: string
+    description: string,
+    projectPath?: string
   ) => Promise<{ success: boolean; title?: string; error?: string }>;
 }
 
 export interface AutoModeAPI {
   start: (
     projectPath: string,
+    branchName?: string | null,
     maxConcurrency?: number
   ) => Promise<{ success: boolean; error?: string }>;
   stop: (
-    projectPath: string
+    projectPath: string,
+    branchName?: string | null
   ) => Promise<{ success: boolean; error?: string; runningFeatures?: number }>;
   stopFeature: (featureId: string) => Promise<{ success: boolean; error?: string }>;
-  status: (projectPath?: string) => Promise<{
+  status: (
+    projectPath?: string,
+    branchName?: string | null
+  ) => Promise<{
     success: boolean;
     isRunning?: boolean;
     isAutoLoopRunning?: boolean;
@@ -706,7 +713,8 @@ export interface ElectronAPI {
       originalText: string,
       enhancementMode: string,
       model?: string,
-      thinkingLevel?: string
+      thinkingLevel?: string,
+      projectPath?: string
     ) => Promise<{
       success: boolean;
       enhancedText?: string;
@@ -2016,6 +2024,20 @@ function createMockWorktreeAPI(): WorktreeAPI {
         console.log('[Mock] Unsubscribing from init script events');
       };
     },
+
+    discardChanges: async (worktreePath: string) => {
+      console.log('[Mock] Discarding changes:', { worktreePath });
+      return {
+        success: true,
+        result: {
+          discarded: true,
+          filesDiscarded: 0,
+          filesRemaining: 0,
+          branch: 'main',
+          message: 'Mock: Changes discarded successfully',
+        },
+      };
+    },
   };
 }
 
@@ -2060,7 +2082,9 @@ function createMockAutoModeAPI(): AutoModeAPI {
       }
 
       mockAutoModeRunning = true;
-      console.log(`[Mock] Auto mode started with maxConcurrency: ${maxConcurrency || 3}`);
+      console.log(
+        `[Mock] Auto mode started with maxConcurrency: ${maxConcurrency || DEFAULT_MAX_CONCURRENCY}`
+      );
       const featureId = 'auto-mode-0';
       mockRunningFeatures.add(featureId);
 
@@ -3173,7 +3197,7 @@ function createMockFeaturesAPI(): FeaturesAPI {
       return { success: true, content: content || null };
     },
 
-    generateTitle: async (description: string) => {
+    generateTitle: async (description: string, _projectPath?: string) => {
       console.log('[Mock] Generating title for:', description.substring(0, 50));
       // Mock title generation - just take first few words
       const words = description.split(/\s+/).slice(0, 6).join(' ');
@@ -3349,6 +3373,13 @@ export interface Project {
   isFavorite?: boolean; // Pin project to top of dashboard
   icon?: string; // Lucide icon name for project identification
   customIconPath?: string; // Path to custom uploaded icon image in .automaker/images/
+  /**
+   * Override the active Claude API profile for this project.
+   * - undefined: Use global setting (activeClaudeApiProfileId)
+   * - null: Explicitly use Direct Anthropic API (no profile)
+   * - string: Use specific profile by ID
+   */
+  activeClaudeApiProfileId?: string | null;
 }
 
 export interface TrashedProject extends Project {

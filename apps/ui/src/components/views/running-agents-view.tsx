@@ -223,6 +223,7 @@ export function RunningAgentsView() {
           }
           featureId={selectedAgent.featureId}
           featureStatus="running"
+          branchName={selectedAgent.branchName}
         />
       )}
     </div>

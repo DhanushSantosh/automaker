@@ -21,6 +21,7 @@ import { useAuthStore } from '@/store/auth-store';
 import { waitForMigrationComplete, resetMigrationState } from './use-settings-migration';
 import {
   DEFAULT_OPENCODE_MODEL,
+  DEFAULT_MAX_CONCURRENCY,
   getAllOpencodeModelIds,
   getAllCursorModelIds,
   migrateCursorModelIds,
@@ -46,6 +47,7 @@ const SETTINGS_FIELDS_TO_SYNC = [
   'sidebarOpen',
   'chatHistoryOpen',
   'maxConcurrency',
+  'autoModeByWorktree', // Per-worktree auto mode settings (only maxConcurrency is persisted)
   'defaultSkipTests',
   'enableDependencyBlocking',
   'skipVerificationInAutoMode',
@@ -72,6 +74,8 @@ const SETTINGS_FIELDS_TO_SYNC = [
   'defaultTerminalId',
   'promptCustomization',
   'eventHooks',
+  'claudeApiProfiles',
+  'activeClaudeApiProfileId',
   'projects',
   'trashedProjects',
   'currentProjectId', // ID of currently open project
@@ -111,6 +115,19 @@ function getSettingsFieldValue(
   }
   if (field === 'openTerminalMode') {
     return appState.terminalState.openTerminalMode;
+  }
+  if (field === 'autoModeByWorktree') {
+    // Only persist settings (maxConcurrency), not runtime state (isRunning, runningTasks)
+    const autoModeByWorktree = appState.autoModeByWorktree;
+    const persistedSettings: Record<string, { maxConcurrency: number; branchName: string | null }> =
+      {};
+    for (const [key, value] of Object.entries(autoModeByWorktree)) {
+      persistedSettings[key] = {
+        maxConcurrency: value.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY,
+        branchName: value.branchName,
+      };
+    }
+    return persistedSettings;
   }
   return appState[field as keyof typeof appState];
 }
@@ -591,11 +608,37 @@ export async function refreshSettingsFromServer(): Promise<boolean> {
       setItem(THEME_STORAGE_KEY, serverSettings.theme);
     }
 
+    // Restore autoModeByWorktree settings (only maxConcurrency is persisted, runtime state is reset)
+    const restoredAutoModeByWorktree: Record<
+      string,
+      {
+        isRunning: boolean;
+        runningTasks: string[];
+        branchName: string | null;
+        maxConcurrency: number;
+      }
+    > = {};
+    if (serverSettings.autoModeByWorktree) {
+      const persistedSettings = serverSettings.autoModeByWorktree as Record<
+        string,
+        { maxConcurrency?: number; branchName?: string | null }
+      >;
+      for (const [key, value] of Object.entries(persistedSettings)) {
+        restoredAutoModeByWorktree[key] = {
+          isRunning: false, // Always start with auto mode off
+          runningTasks: [], // No running tasks on startup
+          branchName: value.branchName ?? null,
+          maxConcurrency: value.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY,
+        };
+      }
+    }
+
     useAppStore.setState({
       theme: serverSettings.theme as unknown as ThemeMode,
       sidebarOpen: serverSettings.sidebarOpen,
       chatHistoryOpen: serverSettings.chatHistoryOpen,
       maxConcurrency: serverSettings.maxConcurrency,
+      autoModeByWorktree: restoredAutoModeByWorktree,
       defaultSkipTests: serverSettings.defaultSkipTests,
       enableDependencyBlocking: serverSettings.enableDependencyBlocking,
       skipVerificationInAutoMode: serverSettings.skipVerificationInAutoMode,
@@ -628,6 +671,8 @@ export async function refreshSettingsFromServer(): Promise<boolean> {
       defaultEditorCommand: serverSettings.defaultEditorCommand ?? null,
       defaultTerminalId: serverSettings.defaultTerminalId ?? null,
       promptCustomization: serverSettings.promptCustomization ?? {},
+      claudeApiProfiles: serverSettings.claudeApiProfiles ?? [],
+      activeClaudeApiProfileId: serverSettings.activeClaudeApiProfileId ?? null,
       projects: serverSettings.projects,
       trashedProjects: serverSettings.trashedProjects,
       projectHistory: serverSettings.projectHistory,
@@ -637,6 +682,8 @@ export async function refreshSettingsFromServer(): Promise<boolean> {
       worktreePanelCollapsed: serverSettings.worktreePanelCollapsed ?? false,
       lastProjectDir: serverSettings.lastProjectDir ?? '',
       recentFolders: serverSettings.recentFolders ?? [],
+      // Event hooks
+      eventHooks: serverSettings.eventHooks ?? [],
       // Terminal settings (nested in terminalState)
       ...((serverSettings.terminalFontFamily || serverSettings.openTerminalMode) && {
         terminalState: {

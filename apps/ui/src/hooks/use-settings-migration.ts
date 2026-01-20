@@ -30,6 +30,7 @@ import { useAppStore, THEME_STORAGE_KEY } from '@/store/app-store';
 import { useSetupStore } from '@/store/setup-store';
 import {
   DEFAULT_OPENCODE_MODEL,
+  DEFAULT_MAX_CONCURRENCY,
   getAllOpencodeModelIds,
   getAllCursorModelIds,
   migrateCursorModelIds,
@@ -194,6 +195,7 @@ export function parseLocalStorageSettings(): Partial<GlobalSettings> | null {
       keyboardShortcuts: state.keyboardShortcuts as GlobalSettings['keyboardShortcuts'],
       mcpServers: state.mcpServers as GlobalSettings['mcpServers'],
       promptCustomization: state.promptCustomization as GlobalSettings['promptCustomization'],
+      eventHooks: state.eventHooks as GlobalSettings['eventHooks'],
       projects: state.projects as GlobalSettings['projects'],
       trashedProjects: state.trashedProjects as GlobalSettings['trashedProjects'],
       currentProjectId: (state.currentProject as { id?: string } | null)?.id ?? null,
@@ -206,6 +208,10 @@ export function parseLocalStorageSettings(): Partial<GlobalSettings> | null {
         worktreePanelCollapsed === 'true' || (state.worktreePanelCollapsed as boolean),
       lastProjectDir: lastProjectDir || (state.lastProjectDir as string),
       recentFolders: recentFolders ? JSON.parse(recentFolders) : (state.recentFolders as string[]),
+      // Claude API Profiles
+      claudeApiProfiles: (state.claudeApiProfiles as GlobalSettings['claudeApiProfiles']) ?? [],
+      activeClaudeApiProfileId:
+        (state.activeClaudeApiProfileId as GlobalSettings['activeClaudeApiProfileId']) ?? null,
     };
   } catch (error) {
     logger.error('Failed to parse localStorage settings:', error);
@@ -324,6 +330,20 @@ export function mergeSettings(
   // Preserve current project ID from localStorage if server doesn't have one
   if (!serverSettings.currentProjectId && localSettings.currentProjectId) {
     merged.currentProjectId = localSettings.currentProjectId;
+  }
+
+  // Claude API Profiles - preserve from localStorage if server is empty
+  if (
+    (!serverSettings.claudeApiProfiles || serverSettings.claudeApiProfiles.length === 0) &&
+    localSettings.claudeApiProfiles &&
+    localSettings.claudeApiProfiles.length > 0
+  ) {
+    merged.claudeApiProfiles = localSettings.claudeApiProfiles;
+  }
+
+  // Active Claude API Profile ID - preserve from localStorage if server doesn't have one
+  if (!serverSettings.activeClaudeApiProfileId && localSettings.activeClaudeApiProfileId) {
+    merged.activeClaudeApiProfileId = localSettings.activeClaudeApiProfileId;
   }
 
   return merged;
@@ -635,13 +655,39 @@ export function hydrateStoreFromSettings(settings: GlobalSettings): void {
     setItem(THEME_STORAGE_KEY, storedTheme);
   }
 
+  // Restore autoModeByWorktree settings (only maxConcurrency is persisted, runtime state is reset)
+  const restoredAutoModeByWorktree: Record<
+    string,
+    {
+      isRunning: boolean;
+      runningTasks: string[];
+      branchName: string | null;
+      maxConcurrency: number;
+    }
+  > = {};
+  if ((settings as Record<string, unknown>).autoModeByWorktree) {
+    const persistedSettings = (settings as Record<string, unknown>).autoModeByWorktree as Record<
+      string,
+      { maxConcurrency?: number; branchName?: string | null }
+    >;
+    for (const [key, value] of Object.entries(persistedSettings)) {
+      restoredAutoModeByWorktree[key] = {
+        isRunning: false, // Always start with auto mode off
+        runningTasks: [], // No running tasks on startup
+        branchName: value.branchName ?? null,
+        maxConcurrency: value.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY,
+      };
+    }
+  }
+
   useAppStore.setState({
     theme: settings.theme as unknown as import('@/store/app-store').ThemeMode,
     fontFamilySans: settings.fontFamilySans ?? null,
     fontFamilyMono: settings.fontFamilyMono ?? null,
     sidebarOpen: settings.sidebarOpen ?? true,
     chatHistoryOpen: settings.chatHistoryOpen ?? false,
-    maxConcurrency: settings.maxConcurrency ?? 3,
+    maxConcurrency: settings.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY,
+    autoModeByWorktree: restoredAutoModeByWorktree,
     defaultSkipTests: settings.defaultSkipTests ?? true,
     enableDependencyBlocking: settings.enableDependencyBlocking ?? true,
     skipVerificationInAutoMode: settings.skipVerificationInAutoMode ?? false,
@@ -671,6 +717,9 @@ export function hydrateStoreFromSettings(settings: GlobalSettings): void {
     },
     mcpServers: settings.mcpServers ?? [],
     promptCustomization: settings.promptCustomization ?? {},
+    eventHooks: settings.eventHooks ?? [],
+    claudeApiProfiles: settings.claudeApiProfiles ?? [],
+    activeClaudeApiProfileId: settings.activeClaudeApiProfileId ?? null,
     projects,
     currentProject,
     trashedProjects: settings.trashedProjects ?? [],
@@ -705,6 +754,19 @@ export function hydrateStoreFromSettings(settings: GlobalSettings): void {
 function buildSettingsUpdateFromStore(): Record<string, unknown> {
   const state = useAppStore.getState();
   const setupState = useSetupStore.getState();
+
+  // Only persist settings (maxConcurrency), not runtime state (isRunning, runningTasks)
+  const persistedAutoModeByWorktree: Record<
+    string,
+    { maxConcurrency: number; branchName: string | null }
+  > = {};
+  for (const [key, value] of Object.entries(state.autoModeByWorktree)) {
+    persistedAutoModeByWorktree[key] = {
+      maxConcurrency: value.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY,
+      branchName: value.branchName,
+    };
+  }
+
   return {
     setupComplete: setupState.setupComplete,
     isFirstRun: setupState.isFirstRun,
@@ -713,6 +775,7 @@ function buildSettingsUpdateFromStore(): Record<string, unknown> {
     sidebarOpen: state.sidebarOpen,
     chatHistoryOpen: state.chatHistoryOpen,
     maxConcurrency: state.maxConcurrency,
+    autoModeByWorktree: persistedAutoModeByWorktree,
     defaultSkipTests: state.defaultSkipTests,
     enableDependencyBlocking: state.enableDependencyBlocking,
     skipVerificationInAutoMode: state.skipVerificationInAutoMode,
@@ -732,6 +795,9 @@ function buildSettingsUpdateFromStore(): Record<string, unknown> {
     keyboardShortcuts: state.keyboardShortcuts,
     mcpServers: state.mcpServers,
     promptCustomization: state.promptCustomization,
+    eventHooks: state.eventHooks,
+    claudeApiProfiles: state.claudeApiProfiles,
+    activeClaudeApiProfileId: state.activeClaudeApiProfileId,
     projects: state.projects,
     trashedProjects: state.trashedProjects,
     currentProjectId: state.currentProject?.id ?? null,

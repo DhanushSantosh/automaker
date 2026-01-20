@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { GitBranch, Plus, RefreshCw } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
-import { cn, pathsEqual } from '@/lib/utils';
+import { pathsEqual } from '@/lib/utils';
 import { toast } from 'sonner';
 import { getHttpApiClient } from '@/lib/http-api-client';
 import { useIsMobile } from '@/hooks/use-media-query';
@@ -22,6 +22,10 @@ import {
   WorktreeActionsDropdown,
   BranchSwitchDropdown,
 } from './components';
+import { useAppStore } from '@/store/app-store';
+import { ViewWorktreeChangesDialog } from '../dialogs';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Undo2 } from 'lucide-react';
 
 export function WorktreePanel({
   projectPath,
@@ -51,7 +55,6 @@ export function WorktreePanel({
 
   const {
     isStartingDevServer,
-    getWorktreeKey,
     isDevServerRunning,
     getDevServerInfo,
     handleStartDevServer,
@@ -90,9 +93,78 @@ export function WorktreePanel({
     features,
   });
 
+  // Auto-mode state management using the store
+  // Use separate selectors to avoid creating new object references on each render
+  const autoModeByWorktree = useAppStore((state) => state.autoModeByWorktree);
+  const currentProject = useAppStore((state) => state.currentProject);
+
+  // Helper to generate worktree key for auto-mode (inlined to avoid selector issues)
+  const getAutoModeWorktreeKey = useCallback(
+    (projectId: string, branchName: string | null): string => {
+      return `${projectId}::${branchName ?? '__main__'}`;
+    },
+    []
+  );
+
+  // Helper to check if auto-mode is running for a specific worktree
+  const isAutoModeRunningForWorktree = useCallback(
+    (worktree: WorktreeInfo): boolean => {
+      if (!currentProject) return false;
+      const branchName = worktree.isMain ? null : worktree.branch;
+      const key = getAutoModeWorktreeKey(currentProject.id, branchName);
+      return autoModeByWorktree[key]?.isRunning ?? false;
+    },
+    [currentProject, autoModeByWorktree, getAutoModeWorktreeKey]
+  );
+
+  // Handler to toggle auto-mode for a worktree
+  const handleToggleAutoMode = useCallback(
+    async (worktree: WorktreeInfo) => {
+      if (!currentProject) return;
+
+      // Import the useAutoMode to get start/stop functions
+      // Since useAutoMode is a hook, we'll use the API client directly
+      const api = getHttpApiClient();
+      const branchName = worktree.isMain ? null : worktree.branch;
+      const isRunning = isAutoModeRunningForWorktree(worktree);
+
+      try {
+        if (isRunning) {
+          const result = await api.autoMode.stop(projectPath, branchName);
+          if (result.success) {
+            const desc = branchName ? `worktree ${branchName}` : 'main branch';
+            toast.success(`Auto Mode stopped for ${desc}`);
+          } else {
+            toast.error(result.error || 'Failed to stop Auto Mode');
+          }
+        } else {
+          const result = await api.autoMode.start(projectPath, branchName);
+          if (result.success) {
+            const desc = branchName ? `worktree ${branchName}` : 'main branch';
+            toast.success(`Auto Mode started for ${desc}`);
+          } else {
+            toast.error(result.error || 'Failed to start Auto Mode');
+          }
+        }
+      } catch (error) {
+        toast.error('Error toggling Auto Mode');
+        console.error('Auto mode toggle error:', error);
+      }
+    },
+    [currentProject, projectPath, isAutoModeRunningForWorktree]
+  );
+
   // Check if init script exists for the project using React Query
   const { data: initScriptData } = useWorktreeInitScript(projectPath);
   const hasInitScript = initScriptData?.exists ?? false;
+
+  // View changes dialog state
+  const [viewChangesDialogOpen, setViewChangesDialogOpen] = useState(false);
+  const [viewChangesWorktree, setViewChangesWorktree] = useState<WorktreeInfo | null>(null);
+
+  // Discard changes confirmation dialog state
+  const [discardChangesDialogOpen, setDiscardChangesDialogOpen] = useState(false);
+  const [discardChangesWorktree, setDiscardChangesWorktree] = useState<WorktreeInfo | null>(null);
 
   // Log panel state management
   const [logPanelOpen, setLogPanelOpen] = useState(false);
@@ -161,6 +233,41 @@ export function WorktreePanel({
     [projectPath]
   );
 
+  const handleViewChanges = useCallback((worktree: WorktreeInfo) => {
+    setViewChangesWorktree(worktree);
+    setViewChangesDialogOpen(true);
+  }, []);
+
+  const handleDiscardChanges = useCallback((worktree: WorktreeInfo) => {
+    setDiscardChangesWorktree(worktree);
+    setDiscardChangesDialogOpen(true);
+  }, []);
+
+  const handleConfirmDiscardChanges = useCallback(async () => {
+    if (!discardChangesWorktree) return;
+
+    try {
+      const api = getHttpApiClient();
+      const result = await api.worktree.discardChanges(discardChangesWorktree.path);
+
+      if (result.success) {
+        toast.success('Changes discarded', {
+          description: `Discarded changes in ${discardChangesWorktree.branch}`,
+        });
+        // Refresh worktrees to update the changes status
+        fetchWorktrees({ silent: true });
+      } else {
+        toast.error('Failed to discard changes', {
+          description: result.error || 'Unknown error',
+        });
+      }
+    } catch (error) {
+      toast.error('Failed to discard changes', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }, [discardChangesWorktree, fetchWorktrees]);
+
   // Handle opening the log panel for a specific worktree
   const handleViewDevServerLogs = useCallback((worktree: WorktreeInfo) => {
     setLogPanelWorktree(worktree);
@@ -224,12 +331,15 @@ export function WorktreePanel({
             isDevServerRunning={isDevServerRunning(selectedWorktree)}
             devServerInfo={getDevServerInfo(selectedWorktree)}
             gitRepoStatus={gitRepoStatus}
+            isAutoModeRunning={isAutoModeRunningForWorktree(selectedWorktree)}
             onOpenChange={handleActionsDropdownOpenChange(selectedWorktree)}
             onPull={handlePull}
             onPush={handlePush}
             onOpenInEditor={handleOpenInEditor}
             onOpenInIntegratedTerminal={handleOpenInIntegratedTerminal}
             onOpenInExternalTerminal={handleOpenInExternalTerminal}
+            onViewChanges={handleViewChanges}
+            onDiscardChanges={handleDiscardChanges}
             onCommit={onCommit}
             onCreatePR={onCreatePR}
             onAddressPRComments={onAddressPRComments}
@@ -241,6 +351,7 @@ export function WorktreePanel({
             onOpenDevServerUrl={handleOpenDevServerUrl}
             onViewDevServerLogs={handleViewDevServerLogs}
             onRunInitScript={handleRunInitScript}
+            onToggleAutoMode={handleToggleAutoMode}
             hasInitScript={hasInitScript}
           />
         )}
@@ -274,6 +385,36 @@ export function WorktreePanel({
             </Button>
           </>
         )}
+
+        {/* View Changes Dialog */}
+        <ViewWorktreeChangesDialog
+          open={viewChangesDialogOpen}
+          onOpenChange={setViewChangesDialogOpen}
+          worktree={viewChangesWorktree}
+          projectPath={projectPath}
+        />
+
+        {/* Discard Changes Confirmation Dialog */}
+        <ConfirmDialog
+          open={discardChangesDialogOpen}
+          onOpenChange={setDiscardChangesDialogOpen}
+          onConfirm={handleConfirmDiscardChanges}
+          title="Discard Changes"
+          description={`Are you sure you want to discard all changes in "${discardChangesWorktree?.branch}"? This will reset staged changes, discard modifications to tracked files, and remove untracked files. This action cannot be undone.`}
+          icon={Undo2}
+          iconClassName="text-destructive"
+          confirmText="Discard Changes"
+          confirmVariant="destructive"
+        />
+
+        {/* Dev Server Logs Panel */}
+        <DevServerLogsPanel
+          open={logPanelOpen}
+          onClose={handleCloseLogPanel}
+          worktree={logPanelWorktree}
+          onStopDevServer={handleStopDevServer}
+          onOpenDevServerUrl={handleOpenDevServerUrl}
+        />
       </div>
     );
   }
@@ -308,6 +449,7 @@ export function WorktreePanel({
             aheadCount={aheadCount}
             behindCount={behindCount}
             gitRepoStatus={gitRepoStatus}
+            isAutoModeRunning={isAutoModeRunningForWorktree(mainWorktree)}
             onSelectWorktree={handleSelectWorktree}
             onBranchDropdownOpenChange={handleBranchDropdownOpenChange(mainWorktree)}
             onActionsDropdownOpenChange={handleActionsDropdownOpenChange(mainWorktree)}
@@ -319,6 +461,8 @@ export function WorktreePanel({
             onOpenInEditor={handleOpenInEditor}
             onOpenInIntegratedTerminal={handleOpenInIntegratedTerminal}
             onOpenInExternalTerminal={handleOpenInExternalTerminal}
+            onViewChanges={handleViewChanges}
+            onDiscardChanges={handleDiscardChanges}
             onCommit={onCommit}
             onCreatePR={onCreatePR}
             onAddressPRComments={onAddressPRComments}
@@ -330,6 +474,7 @@ export function WorktreePanel({
             onOpenDevServerUrl={handleOpenDevServerUrl}
             onViewDevServerLogs={handleViewDevServerLogs}
             onRunInitScript={handleRunInitScript}
+            onToggleAutoMode={handleToggleAutoMode}
             hasInitScript={hasInitScript}
           />
         )}
@@ -368,6 +513,7 @@ export function WorktreePanel({
                   aheadCount={aheadCount}
                   behindCount={behindCount}
                   gitRepoStatus={gitRepoStatus}
+                  isAutoModeRunning={isAutoModeRunningForWorktree(worktree)}
                   onSelectWorktree={handleSelectWorktree}
                   onBranchDropdownOpenChange={handleBranchDropdownOpenChange(worktree)}
                   onActionsDropdownOpenChange={handleActionsDropdownOpenChange(worktree)}
@@ -379,6 +525,8 @@ export function WorktreePanel({
                   onOpenInEditor={handleOpenInEditor}
                   onOpenInIntegratedTerminal={handleOpenInIntegratedTerminal}
                   onOpenInExternalTerminal={handleOpenInExternalTerminal}
+                  onViewChanges={handleViewChanges}
+                  onDiscardChanges={handleDiscardChanges}
                   onCommit={onCommit}
                   onCreatePR={onCreatePR}
                   onAddressPRComments={onAddressPRComments}
@@ -390,6 +538,7 @@ export function WorktreePanel({
                   onOpenDevServerUrl={handleOpenDevServerUrl}
                   onViewDevServerLogs={handleViewDevServerLogs}
                   onRunInitScript={handleRunInitScript}
+                  onToggleAutoMode={handleToggleAutoMode}
                   hasInitScript={hasInitScript}
                 />
               );
@@ -423,6 +572,27 @@ export function WorktreePanel({
           </div>
         </>
       )}
+
+      {/* View Changes Dialog */}
+      <ViewWorktreeChangesDialog
+        open={viewChangesDialogOpen}
+        onOpenChange={setViewChangesDialogOpen}
+        worktree={viewChangesWorktree}
+        projectPath={projectPath}
+      />
+
+      {/* Discard Changes Confirmation Dialog */}
+      <ConfirmDialog
+        open={discardChangesDialogOpen}
+        onOpenChange={setDiscardChangesDialogOpen}
+        onConfirm={handleConfirmDiscardChanges}
+        title="Discard Changes"
+        description={`Are you sure you want to discard all changes in "${discardChangesWorktree?.branch}"? This will reset staged changes, discard modifications to tracked files, and remove untracked files. This action cannot be undone.`}
+        icon={Undo2}
+        iconClassName="text-destructive"
+        confirmText="Discard Changes"
+        confirmVariant="destructive"
+      />
 
       {/* Dev Server Logs Panel */}
       <DevServerLogsPanel

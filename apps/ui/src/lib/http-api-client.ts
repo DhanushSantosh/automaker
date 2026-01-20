@@ -1657,8 +1657,8 @@ export class HttpApiClient implements ElectronAPI {
       this.post('/api/features/delete', { projectPath, featureId }),
     getAgentOutput: (projectPath: string, featureId: string) =>
       this.post('/api/features/agent-output', { projectPath, featureId }),
-    generateTitle: (description: string) =>
-      this.post('/api/features/generate-title', { description }),
+    generateTitle: (description: string, projectPath?: string) =>
+      this.post('/api/features/generate-title', { description, projectPath }),
     bulkUpdate: (projectPath: string, featureIds: string[], updates: Partial<Feature>) =>
       this.post('/api/features/bulk-update', { projectPath, featureIds, updates }),
     bulkDelete: (projectPath: string, featureIds: string[]) =>
@@ -1667,11 +1667,13 @@ export class HttpApiClient implements ElectronAPI {
 
   // Auto Mode API
   autoMode: AutoModeAPI = {
-    start: (projectPath: string, maxConcurrency?: number) =>
-      this.post('/api/auto-mode/start', { projectPath, maxConcurrency }),
-    stop: (projectPath: string) => this.post('/api/auto-mode/stop', { projectPath }),
+    start: (projectPath: string, branchName?: string | null, maxConcurrency?: number) =>
+      this.post('/api/auto-mode/start', { projectPath, branchName, maxConcurrency }),
+    stop: (projectPath: string, branchName?: string | null) =>
+      this.post('/api/auto-mode/stop', { projectPath, branchName }),
     stopFeature: (featureId: string) => this.post('/api/auto-mode/stop-feature', { featureId }),
-    status: (projectPath?: string) => this.post('/api/auto-mode/status', { projectPath }),
+    status: (projectPath?: string, branchName?: string | null) =>
+      this.post('/api/auto-mode/status', { projectPath, branchName }),
     runFeature: (
       projectPath: string,
       featureId: string,
@@ -1743,13 +1745,15 @@ export class HttpApiClient implements ElectronAPI {
       originalText: string,
       enhancementMode: string,
       model?: string,
-      thinkingLevel?: string
+      thinkingLevel?: string,
+      projectPath?: string
     ): Promise<EnhancePromptResult> =>
       this.post('/api/enhance-prompt', {
         originalText,
         enhancementMode,
         model,
         thinkingLevel,
+        projectPath,
       }),
   };
 
@@ -1847,6 +1851,8 @@ export class HttpApiClient implements ElectronAPI {
       this.httpDelete('/api/worktree/init-script', { projectPath }),
     runInitScript: (projectPath: string, worktreePath: string, branch: string) =>
       this.post('/api/worktree/run-init-script', { projectPath, worktreePath, branch }),
+    discardChanges: (worktreePath: string) =>
+      this.post('/api/worktree/discard-changes', { worktreePath }),
     onInitScriptEvent: (
       callback: (event: {
         type: 'worktree:init-started' | 'worktree:init-output' | 'worktree:init-completed';

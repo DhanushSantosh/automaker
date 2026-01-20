@@ -25,10 +25,13 @@ import {
   AlertCircle,
   RefreshCw,
   Copy,
+  Eye,
   ScrollText,
   Terminal,
   SquarePlus,
   SplitSquareHorizontal,
+  Zap,
+  Undo2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -56,12 +59,16 @@ interface WorktreeActionsDropdownProps {
   gitRepoStatus: GitRepoStatus;
   /** When true, renders as a standalone button (not attached to another element) */
   standalone?: boolean;
+  /** Whether auto mode is running for this worktree */
+  isAutoModeRunning?: boolean;
   onOpenChange: (open: boolean) => void;
   onPull: (worktree: WorktreeInfo) => void;
   onPush: (worktree: WorktreeInfo) => void;
   onOpenInEditor: (worktree: WorktreeInfo, editorCommand?: string) => void;
   onOpenInIntegratedTerminal: (worktree: WorktreeInfo, mode?: 'tab' | 'split') => void;
   onOpenInExternalTerminal: (worktree: WorktreeInfo, terminalId?: string) => void;
+  onViewChanges: (worktree: WorktreeInfo) => void;
+  onDiscardChanges: (worktree: WorktreeInfo) => void;
   onCommit: (worktree: WorktreeInfo) => void;
   onCreatePR: (worktree: WorktreeInfo) => void;
   onAddressPRComments: (worktree: WorktreeInfo, prInfo: PRInfo) => void;
@@ -73,6 +80,7 @@ interface WorktreeActionsDropdownProps {
   onOpenDevServerUrl: (worktree: WorktreeInfo) => void;
   onViewDevServerLogs: (worktree: WorktreeInfo) => void;
   onRunInitScript: (worktree: WorktreeInfo) => void;
+  onToggleAutoMode?: (worktree: WorktreeInfo) => void;
   hasInitScript: boolean;
 }
 
@@ -88,12 +96,15 @@ export function WorktreeActionsDropdown({
   devServerInfo,
   gitRepoStatus,
   standalone = false,
+  isAutoModeRunning = false,
   onOpenChange,
   onPull,
   onPush,
   onOpenInEditor,
   onOpenInIntegratedTerminal,
   onOpenInExternalTerminal,
+  onViewChanges,
+  onDiscardChanges,
   onCommit,
   onCreatePR,
   onAddressPRComments,
@@ -105,6 +116,7 @@ export function WorktreeActionsDropdown({
   onOpenDevServerUrl,
   onViewDevServerLogs,
   onRunInitScript,
+  onToggleAutoMode,
   hasInitScript,
 }: WorktreeActionsDropdownProps) {
   // Get available editors for the "Open In" submenu
@@ -211,6 +223,26 @@ export function WorktreeActionsDropdown({
               <Play className={cn('w-3.5 h-3.5 mr-2', isStartingDevServer && 'animate-pulse')} />
               {isStartingDevServer ? 'Starting...' : 'Start Dev Server'}
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
+        {/* Auto Mode toggle */}
+        {onToggleAutoMode && (
+          <>
+            {isAutoModeRunning ? (
+              <DropdownMenuItem onClick={() => onToggleAutoMode(worktree)} className="text-xs">
+                <span className="flex items-center mr-2">
+                  <Zap className="w-3.5 h-3.5 text-yellow-500" />
+                  <span className="ml-0.5 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                </span>
+                Stop Auto Mode
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => onToggleAutoMode(worktree)} className="text-xs">
+                <Zap className="w-3.5 h-3.5 mr-2" />
+                Start Auto Mode
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
           </>
         )}
@@ -408,6 +440,13 @@ export function WorktreeActionsDropdown({
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
+
+        {worktree.hasChanges && (
+          <DropdownMenuItem onClick={() => onViewChanges(worktree)} className="text-xs">
+            <Eye className="w-3.5 h-3.5 mr-2" />
+            View Changes
+          </DropdownMenuItem>
+        )}
         {worktree.hasChanges && (
           <TooltipWrapper
             showTooltip={!gitRepoStatus.isGitRepo}
@@ -483,9 +522,30 @@ export function WorktreeActionsDropdown({
             </DropdownMenuItem>
           </>
         )}
+        <DropdownMenuSeparator />
+        {worktree.hasChanges && (
+          <TooltipWrapper
+            showTooltip={!gitRepoStatus.isGitRepo}
+            tooltipContent="Not a git repository"
+          >
+            <DropdownMenuItem
+              onClick={() => gitRepoStatus.isGitRepo && onDiscardChanges(worktree)}
+              disabled={!gitRepoStatus.isGitRepo}
+              className={cn(
+                'text-xs text-destructive focus:text-destructive',
+                !gitRepoStatus.isGitRepo && 'opacity-50 cursor-not-allowed'
+              )}
+            >
+              <Undo2 className="w-3.5 h-3.5 mr-2" />
+              Discard Changes
+              {!gitRepoStatus.isGitRepo && (
+                <AlertCircle className="w-3 h-3 ml-auto text-muted-foreground" />
+              )}
+            </DropdownMenuItem>
+          </TooltipWrapper>
+        )}
         {!worktree.isMain && (
           <>
-            <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => onDeleteWorktree(worktree)}
               className="text-xs text-destructive focus:text-destructive"

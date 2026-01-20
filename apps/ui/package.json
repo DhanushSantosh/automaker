@@ -147,6 +147,7 @@
     "productName": "Automaker",
     "artifactName": "${productName}-${version}-${arch}.${ext}",
     "npmRebuild": false,
+    "publish": null,
     "afterPack": "./scripts/rebuild-server-natives.cjs",
     "directories": {
       "output": "release"

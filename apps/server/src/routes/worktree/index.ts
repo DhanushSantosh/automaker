@@ -48,6 +48,7 @@ import {
   createDeleteInitScriptHandler,
   createRunInitScriptHandler,
 } from './routes/init-script.js';
+import { createDiscardChangesHandler } from './routes/discard-changes.js';
 import type { SettingsService } from '../../services/settings-service.js';
 
 export function createWorktreeRoutes(
@@ -146,6 +147,14 @@ export function createWorktreeRoutes(
     '/run-init-script',
     validatePathParams('projectPath', 'worktreePath'),
     createRunInitScriptHandler(events)
+  );
+
+  // Discard changes route
+  router.post(
+    '/discard-changes',
+    validatePathParams('worktreePath'),
+    requireGitRepoOnly,
+    createDiscardChangesHandler()
   );
 
   return router;
