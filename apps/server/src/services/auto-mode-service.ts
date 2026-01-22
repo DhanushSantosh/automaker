@@ -534,7 +534,11 @@ export class AutoModeService {
       const autoModeByWorktree = settings.autoModeByWorktree;
 
       if (projectId && autoModeByWorktree && typeof autoModeByWorktree === 'object') {
-        const key = `${projectId}::${branchName ?? '__main__'}`;
+        // Normalize branch name to match UI convention:
+        // - null or "main" -> "__main__" (UI treats "main" as the main worktree)
+        // This ensures consistency with how the UI stores worktree settings
+        const normalizedBranch = branchName === 'main' ? null : branchName;
+        const key = `${projectId}::${normalizedBranch ?? '__main__'}`;
         const entry = autoModeByWorktree[key];
         if (entry && typeof entry.maxConcurrency === 'number') {
           return entry.maxConcurrency;
@@ -1039,7 +1043,9 @@ export class AutoModeService {
   }> {
     // Load feature to get branchName
     const feature = await this.loadFeature(projectPath, featureId);
-    const branchName = feature?.branchName ?? null;
+    const rawBranchName = feature?.branchName ?? null;
+    // Normalize "main" to null to match UI convention for main worktree
+    const branchName = rawBranchName === 'main' ? null : rawBranchName;
 
     // Get per-worktree limit
     const maxAgents = await this.resolveMaxConcurrency(projectPath, branchName);

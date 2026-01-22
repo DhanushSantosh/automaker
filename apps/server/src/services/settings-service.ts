@@ -621,6 +621,21 @@ export class SettingsService {
       };
     }
 
+    // Deep merge autoModeByWorktree if provided (preserves other worktree entries)
+    if (sanitizedUpdates.autoModeByWorktree) {
+      type WorktreeEntry = { maxConcurrency: number; branchName: string | null };
+      const mergedAutoModeByWorktree: Record<string, WorktreeEntry> = {
+        ...current.autoModeByWorktree,
+      };
+      for (const [key, value] of Object.entries(sanitizedUpdates.autoModeByWorktree)) {
+        mergedAutoModeByWorktree[key] = {
+          ...mergedAutoModeByWorktree[key],
+          ...value,
+        };
+      }
+      updated.autoModeByWorktree = mergedAutoModeByWorktree;
+    }
+
     await writeSettingsJson(settingsPath, updated);
     logger.info('Global settings updated');
 

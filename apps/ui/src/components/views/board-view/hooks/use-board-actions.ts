@@ -553,6 +553,11 @@ export function useBoardActions({
         };
         updateFeature(feature.id, rollbackUpdates);
 
+        // Also persist the rollback so it survives page refresh
+        persistFeatureUpdate(feature.id, rollbackUpdates).catch((persistError) => {
+          logger.error('Failed to persist rollback:', persistError);
+        });
+
         // If server is offline (connection refused), redirect to login page
         if (isConnectionError(error)) {
           handleServerOffline();
