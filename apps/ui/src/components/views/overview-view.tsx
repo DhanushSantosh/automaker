@@ -5,19 +5,31 @@
  * recent completions, and alerts. Quick navigation to any project or feature.
  */
 
+import { useState, useCallback } from 'react';
+import { useNavigate } from '@tanstack/react-router';
+import { createLogger } from '@automaker/utils/logger';
 import { useMultiProjectStatus } from '@/hooks/use-multi-project-status';
-import { isElectron } from '@/lib/electron';
+import { useAppStore } from '@/store/app-store';
+import { isElectron, getElectronAPI } from '@/lib/electron';
 import { isMac } from '@/lib/utils';
+import { initializeProject } from '@/lib/project-init';
+import { getHttpApiClient } from '@/lib/http-api-client';
+import { toast } from 'sonner';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { NewProjectModal } from '@/components/dialogs/new-project-modal';
+import { WorkspacePickerModal } from '@/components/dialogs/workspace-picker-modal';
 import { ProjectStatusCard } from './overview/project-status-card';
 import { RecentActivityFeed } from './overview/recent-activity-feed';
 import { RunningAgentsPanel } from './overview/running-agents-panel';
+import type { StarterTemplate } from '@/lib/templates';
 import {
   LayoutDashboard,
   RefreshCw,
   Folder,
+  FolderOpen,
+  Plus,
   Activity,
   CheckCircle2,
   XCircle,
@@ -26,8 +38,222 @@ import {
   Bell,
 } from 'lucide-react';
 
+const logger = createLogger('OverviewView');
+
 export function OverviewView() {
+  const navigate = useNavigate();
   const { overview, isLoading, error, refresh } = useMultiProjectStatus(15000); // Refresh every 15s
+  const { addProject, setCurrentProject } = useAppStore();
+
+  // Modal state
+  const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+  const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+
+  const handleOpenProject = useCallback(async () => {
+    try {
+      const httpClient = getHttpApiClient();
+      const configResult = await httpClient.workspace.getConfig();
+
+      if (configResult.success && configResult.configured) {
+        setShowWorkspacePicker(true);
+      } else {
+        const api = getElectronAPI();
+        const result = await api.openDirectory();
+
+        if (!result.canceled && result.filePaths[0]) {
+          const path = result.filePaths[0];
+          const name = path.split(/[/\\]/).filter(Boolean).pop() || 'Untitled Project';
+          await initializeAndOpenProject(path, name);
+        }
+      }
+    } catch (error) {
+      logger.error('[Overview] Failed to check workspace config:', error);
+      const api = getElectronAPI();
+      const result = await api.openDirectory();
+
+      if (!result.canceled && result.filePaths[0]) {
+        const path = result.filePaths[0];
+        const name = path.split(/[/\\]/).filter(Boolean).pop() || 'Untitled Project';
+        await initializeAndOpenProject(path, name);
+      }
+    }
+  }, []);
+
+  const initializeAndOpenProject = useCallback(
+    async (path: string, name: string) => {
+      try {
+        const initResult = await initializeProject(path);
+        if (!initResult.success) {
+          toast.error('Failed to initialize project', {
+            description: initResult.error || 'Unknown error occurred',
+          });
+          return;
+        }
+
+        const project = {
+          id: `project-${Date.now()}`,
+          name,
+          path,
+          lastOpened: new Date().toISOString(),
+        };
+
+        addProject(project);
+        setCurrentProject(project);
+
+        toast.success('Project opened', { description: `Opened ${name}` });
+        navigate({ to: '/board' });
+      } catch (error) {
+        logger.error('[Overview] Failed to open project:', error);
+        toast.error('Failed to open project', {
+          description: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    },
+    [addProject, setCurrentProject, navigate]
+  );
+
+  const handleWorkspaceSelect = useCallback(
+    async (path: string, name: string) => {
+      setShowWorkspacePicker(false);
+      await initializeAndOpenProject(path, name);
+    },
+    [initializeAndOpenProject]
+  );
+
+  const handleCreateBlankProject = useCallback(
+    async (projectName: string, parentDir: string) => {
+      setIsCreating(true);
+      try {
+        const api = getElectronAPI();
+        const projectPath = `${parentDir}/${projectName}`;
+
+        await api.mkdir(projectPath);
+        await initializeProject(projectPath);
+
+        await api.writeFile(
+          `${projectPath}/.automaker/app_spec.txt`,
+          `<project_specification>
+  <project_name>${projectName}</project_name>
+  <overview>Describe your project here.</overview>
+  <technology_stack></technology_stack>
+  <core_capabilities></core_capabilities>
+  <implemented_features></implemented_features>
+</project_specification>`
+        );
+
+        const project = {
+          id: `project-${Date.now()}`,
+          name: projectName,
+          path: projectPath,
+          lastOpened: new Date().toISOString(),
+        };
+
+        addProject(project);
+        setCurrentProject(project);
+        setShowNewProjectModal(false);
+
+        toast.success('Project created', { description: `Created ${projectName}` });
+        navigate({ to: '/board' });
+      } catch (error) {
+        logger.error('Failed to create project:', error);
+        toast.error('Failed to create project', {
+          description: error instanceof Error ? error.message : 'Unknown error',
+        });
+      } finally {
+        setIsCreating(false);
+      }
+    },
+    [addProject, setCurrentProject, navigate]
+  );
+
+  const handleCreateFromTemplate = useCallback(
+    async (template: StarterTemplate, projectName: string, parentDir: string) => {
+      setIsCreating(true);
+      try {
+        const httpClient = getHttpApiClient();
+        const cloneResult = await httpClient.templates.clone(
+          template.repoUrl,
+          projectName,
+          parentDir
+        );
+
+        if (!cloneResult.success || !cloneResult.projectPath) {
+          toast.error('Failed to clone template', {
+            description: cloneResult.error || 'Unknown error occurred',
+          });
+          return;
+        }
+
+        await initializeProject(cloneResult.projectPath);
+
+        const project = {
+          id: `project-${Date.now()}`,
+          name: projectName,
+          path: cloneResult.projectPath,
+          lastOpened: new Date().toISOString(),
+        };
+
+        addProject(project);
+        setCurrentProject(project);
+        setShowNewProjectModal(false);
+
+        toast.success('Project created from template', {
+          description: `Created ${projectName} from ${template.name}`,
+        });
+        navigate({ to: '/board' });
+      } catch (error) {
+        logger.error('Failed to create from template:', error);
+        toast.error('Failed to create project', {
+          description: error instanceof Error ? error.message : 'Unknown error',
+        });
+      } finally {
+        setIsCreating(false);
+      }
+    },
+    [addProject, setCurrentProject, navigate]
+  );
+
+  const handleCreateFromCustomUrl = useCallback(
+    async (repoUrl: string, projectName: string, parentDir: string) => {
+      setIsCreating(true);
+      try {
+        const httpClient = getHttpApiClient();
+        const cloneResult = await httpClient.templates.clone(repoUrl, projectName, parentDir);
+
+        if (!cloneResult.success || !cloneResult.projectPath) {
+          toast.error('Failed to clone repository', {
+            description: cloneResult.error || 'Unknown error occurred',
+          });
+          return;
+        }
+
+        await initializeProject(cloneResult.projectPath);
+
+        const project = {
+          id: `project-${Date.now()}`,
+          name: projectName,
+          path: cloneResult.projectPath,
+          lastOpened: new Date().toISOString(),
+        };
+
+        addProject(project);
+        setCurrentProject(project);
+        setShowNewProjectModal(false);
+
+        toast.success('Project created from repository', { description: `Created ${projectName}` });
+        navigate({ to: '/board' });
+      } catch (error) {
+        logger.error('Failed to create from custom URL:', error);
+        toast.error('Failed to create project', {
+          description: error instanceof Error ? error.message : 'Unknown error',
+        });
+      } finally {
+        setIsCreating(false);
+      }
+    },
+    [addProject, setCurrentProject, navigate]
+  );
 
   return (
     <div className="flex-1 flex flex-col h-screen content-bg" data-testid="overview-view">
@@ -47,7 +273,7 @@ export function OverviewView() {
                 <LayoutDashboard className="w-4 h-4 text-brand-500" />
               </div>
               <div>
-                <h1 className="text-lg font-semibold text-foreground">Auto-Maker Dashboard</h1>
+                <h1 className="text-lg font-semibold text-foreground">Automaker Dashboard</h1>
                 <p className="text-xs text-muted-foreground">
                   {overview ? `${overview.aggregate.projectCounts.total} projects` : 'Loading...'}
                 </p>
@@ -65,6 +291,18 @@ export function OverviewView() {
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               Refresh
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleOpenProject} className="gap-2">
+              <FolderOpen className="w-4 h-4" />
+              Open Project
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setShowNewProjectModal(true)}
+              className="gap-2 bg-brand-500 hover:bg-brand-600 text-white"
+            >
+              <Plus className="w-4 h-4" />
+              New Project
             </Button>
           </div>
         </div>
@@ -268,6 +506,22 @@ export function OverviewView() {
           </div>
         )}
       </div>
+
+      {/* Modals */}
+      <NewProjectModal
+        open={showNewProjectModal}
+        onOpenChange={setShowNewProjectModal}
+        onCreateBlankProject={handleCreateBlankProject}
+        onCreateFromTemplate={handleCreateFromTemplate}
+        onCreateFromCustomUrl={handleCreateFromCustomUrl}
+        isCreating={isCreating}
+      />
+
+      <WorkspacePickerModal
+        open={showWorkspacePicker}
+        onOpenChange={setShowWorkspacePicker}
+        onSelect={handleWorkspaceSelect}
+      />
     </div>
   );
 }
