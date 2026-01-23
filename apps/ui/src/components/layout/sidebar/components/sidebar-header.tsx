@@ -37,7 +37,7 @@ export function SidebarHeader({
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const handleLogoClick = useCallback(() => {
-    navigate({ to: '/dashboard' });
+    navigate({ to: '/overview' });
   }, [navigate]);
 
   const handleProjectSelect = useCallback(

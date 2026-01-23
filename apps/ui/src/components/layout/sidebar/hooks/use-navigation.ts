@@ -175,12 +175,12 @@ export function useNavigation({
     }
 
     const sections: NavSection[] = [
-      // Dashboard - standalone at top
+      // Dashboard - standalone at top (links to projects overview)
       {
         label: '',
         items: [
           {
-            id: 'dashboard',
+            id: 'overview',
             label: 'Dashboard',
             icon: Home,
           },

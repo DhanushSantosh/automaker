@@ -217,7 +217,15 @@ export function SidebarFooter({
 
   // Expanded state
   return (
-    <div className="shrink-0">
+    <div
+      className={cn(
+        'shrink-0',
+        // Top border with gradient fade
+        'border-t border-border/40',
+        // Elevated background for visual separation
+        'bg-gradient-to-t from-background/10 via-sidebar/50 to-transparent'
+      )}
+    >
       {/* Running Agents Link */}
       {!hideRunningAgents && (
         <div className="px-3 py-0.5">

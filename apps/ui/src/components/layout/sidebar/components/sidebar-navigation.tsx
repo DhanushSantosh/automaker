@@ -89,7 +89,7 @@ export function SidebarNavigation({
   // Filter sections: always show non-project sections, only show project sections when project exists
   const visibleSections = navSections.filter((section) => {
     // Always show Dashboard (first section with no label)
-    if (!section.label && section.items.some((item) => item.id === 'dashboard')) {
+    if (!section.label && section.items.some((item) => item.id === 'overview')) {
       return true;
     }
     // Show other sections only when project is selected
