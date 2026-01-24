@@ -260,8 +260,10 @@ export function WorktreeTab({
             aria-label={worktree.branch}
             data-testid={`worktree-branch-${worktree.branch}`}
           >
-            {isRunning && <Spinner size="xs" />}
-            {isActivating && !isRunning && <Spinner size="xs" />}
+            {isRunning && <Spinner size="xs" variant={isSelected ? 'foreground' : 'primary'} />}
+            {isActivating && !isRunning && (
+              <Spinner size="xs" variant={isSelected ? 'foreground' : 'primary'} />
+            )}
             {worktree.branch}
             {cardCount !== undefined && cardCount > 0 && (
               <span className="inline-flex items-center justify-center h-4 min-w-[1rem] px-1 text-[10px] font-medium rounded bg-background/80 text-foreground border border-border">
@@ -327,8 +329,10 @@ export function WorktreeTab({
               : 'Click to switch to this branch'
           }
         >
-          {isRunning && <Spinner size="xs" />}
-          {isActivating && !isRunning && <Spinner size="xs" />}
+          {isRunning && <Spinner size="xs" variant={isSelected ? 'foreground' : 'primary'} />}
+          {isActivating && !isRunning && (
+            <Spinner size="xs" variant={isSelected ? 'foreground' : 'primary'} />
+          )}
           {worktree.branch}
           {cardCount !== undefined && cardCount > 0 && (
             <span className="inline-flex items-center justify-center h-4 min-w-[1rem] px-1 text-[10px] font-medium rounded bg-background/80 text-foreground border border-border">

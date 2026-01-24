@@ -463,6 +463,16 @@ export function BoardView() {
   const selectedWorktreeBranch =
     currentWorktreeBranch || worktrees.find((w) => w.isMain)?.branch || 'main';
 
+  // Aggregate running auto tasks across all worktrees for this project
+  const autoModeByWorktree = useAppStore((state) => state.autoModeByWorktree);
+  const runningAutoTasksAllWorktrees = useMemo(() => {
+    if (!currentProject?.id) return [];
+    const prefix = `${currentProject.id}::`;
+    return Object.entries(autoModeByWorktree)
+      .filter(([key]) => key.startsWith(prefix))
+      .flatMap(([, state]) => state.runningTasks ?? []);
+  }, [autoModeByWorktree, currentProject?.id]);
+
   // Get in-progress features for keyboard shortcuts (needed before actions hook)
   // Must be after runningAutoTasks is defined
   const inProgressFeaturesForShortcuts = useMemo(() => {
@@ -1372,7 +1382,7 @@ export function BoardView() {
               setWorktreeRefreshKey((k) => k + 1);
             }}
             onRemovedWorktrees={handleRemovedWorktrees}
-            runningFeatureIds={runningAutoTasks}
+            runningFeatureIds={runningAutoTasksAllWorktrees}
             branchCardCounts={branchCardCounts}
             features={hookFeatures.map((f) => ({
               id: f.id,
