@@ -408,7 +408,7 @@ export function CliSetupStep({ config, state, onNext, onBack, onSkip }: CliSetup
                     >
                       {isInstalling ? (
                         <>
-                          <Spinner size="sm" className="mr-2" />
+                          <Spinner size="sm" variant="foreground" className="mr-2" />
                           Installing...
                         </>
                       ) : (
@@ -681,7 +681,7 @@ export function CliSetupStep({ config, state, onNext, onBack, onSkip }: CliSetup
                     >
                       {isSavingApiKey ? (
                         <>
-                          <Spinner size="sm" className="mr-2" />
+                          <Spinner size="sm" variant="foreground" className="mr-2" />
                           Saving...
                         </>
                       ) : (

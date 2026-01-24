@@ -316,7 +316,7 @@ export function OpencodeSetupStep({ onNext, onBack, onSkip }: OpencodeSetupStepP
                   >
                     {isLoggingIn ? (
                       <>
-                        <Spinner size="sm" className="mr-2" />
+                        <Spinner size="sm" variant="foreground" className="mr-2" />
                         Waiting for login...
                       </>
                     ) : (

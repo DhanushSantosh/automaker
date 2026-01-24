@@ -412,7 +412,7 @@ export function ClaudeSetupStep({ onNext, onBack, onSkip }: ClaudeSetupStepProps
                     >
                       {isInstalling ? (
                         <>
-                          <Spinner size="sm" className="mr-2" />
+                          <Spinner size="sm" variant="foreground" className="mr-2" />
                           Installing...
                         </>
                       ) : (
@@ -574,7 +574,7 @@ export function ClaudeSetupStep({ onNext, onBack, onSkip }: ClaudeSetupStepProps
                     >
                       {isSavingApiKey ? (
                         <>
-                          <Spinner size="sm" className="mr-2" />
+                          <Spinner size="sm" variant="foreground" className="mr-2" />
                           Saving...
                         </>
                       ) : (

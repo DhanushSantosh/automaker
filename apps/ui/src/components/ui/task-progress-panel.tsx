@@ -261,7 +261,7 @@ export function TaskProgressPanel({
                       )}
                     >
                       {isCompleted && <Check className="h-3.5 w-3.5" />}
-                      {isActive && <Spinner size="xs" />}
+                      {isActive && <Spinner size="xs" variant="foreground" />}
                       {isPending && <Circle className="h-2 w-2 fill-current opacity-50" />}
                     </div>
 

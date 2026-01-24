@@ -329,7 +329,7 @@ function ClaudeContent() {
               >
                 {isInstalling ? (
                   <>
-                    <Spinner size="sm" className="mr-2" />
+                    <Spinner size="sm" variant="foreground" className="mr-2" />
                     Installing...
                   </>
                 ) : (
@@ -424,7 +424,11 @@ function ClaudeContent() {
                         disabled={isSavingApiKey || !apiKey.trim()}
                         className="flex-1 bg-brand-500 hover:bg-brand-600 text-white"
                       >
-                        {isSavingApiKey ? <Spinner size="sm" /> : 'Save API Key'}
+                        {isSavingApiKey ? (
+                          <Spinner size="sm" variant="foreground" />
+                        ) : (
+                          'Save API Key'
+                        )}
                       </Button>
                       {hasApiKey && (
                         <Button
@@ -661,7 +665,7 @@ function CursorContent() {
               >
                 {isLoggingIn ? (
                   <>
-                    <Spinner size="sm" className="mr-2" />
+                    <Spinner size="sm" variant="foreground" className="mr-2" />
                     Waiting for login...
                   </>
                 ) : (
@@ -918,7 +922,7 @@ function CodexContent() {
                   >
                     {isLoggingIn ? (
                       <>
-                        <Spinner size="sm" className="mr-2" />
+                        <Spinner size="sm" variant="foreground" className="mr-2" />
                         Waiting for login...
                       </>
                     ) : (
@@ -961,7 +965,7 @@ function CodexContent() {
                     disabled={isSaving || !apiKey.trim()}
                     className="w-full bg-brand-500 hover:bg-brand-600 text-white"
                   >
-                    {isSaving ? <Spinner size="sm" /> : 'Save API Key'}
+                    {isSaving ? <Spinner size="sm" variant="foreground" /> : 'Save API Key'}
                   </Button>
                 </AccordionContent>
               </AccordionItem>
@@ -1194,7 +1198,7 @@ function OpencodeContent() {
               >
                 {isLoggingIn ? (
                   <>
-                    <Spinner size="sm" className="mr-2" />
+                    <Spinner size="sm" variant="foreground" className="mr-2" />
                     Waiting for login...
                   </>
                 ) : (
@@ -1466,7 +1470,7 @@ function GeminiContent() {
                   >
                     {isLoggingIn ? (
                       <>
-                        <Spinner size="sm" className="mr-2" />
+                        <Spinner size="sm" variant="foreground" className="mr-2" />
                         Waiting for login...
                       </>
                     ) : (
@@ -1509,7 +1513,7 @@ function GeminiContent() {
                     disabled={isSaving || !apiKey.trim()}
                     className="w-full bg-brand-500 hover:bg-brand-600 text-white"
                   >
-                    {isSaving ? <Spinner size="sm" /> : 'Save API Key'}
+                    {isSaving ? <Spinner size="sm" variant="foreground" /> : 'Save API Key'}
                   </Button>
                 </AccordionContent>
               </AccordionItem>
@@ -1745,7 +1749,7 @@ function CopilotContent() {
               >
                 {isLoggingIn ? (
                   <>
-                    <Spinner size="sm" className="mr-2" />
+                    <Spinner size="sm" variant="foreground" className="mr-2" />
                     Waiting for login...
                   </>
                 ) : (

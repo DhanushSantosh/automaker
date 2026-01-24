@@ -210,7 +210,7 @@ export function PlanApprovalDialog({
                 className="bg-green-600 hover:bg-green-700 text-white"
               >
                 {isLoading ? (
-                  <Spinner size="sm" className="mr-2" />
+                  <Spinner size="sm" variant="foreground" className="mr-2" />
                 ) : (
                   <Check className="w-4 h-4 mr-2" />
                 )}
