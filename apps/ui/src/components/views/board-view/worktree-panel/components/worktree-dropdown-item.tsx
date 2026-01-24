@@ -84,7 +84,7 @@ export function WorktreeDropdownItem({
 
   return (
     <DropdownMenuItem
-      onClick={onSelect}
+      onSelect={onSelect}
       className={cn('flex items-center gap-2 cursor-pointer pr-2', isSelected && 'bg-accent')}
       aria-current={isSelected ? 'true' : undefined}
     >
