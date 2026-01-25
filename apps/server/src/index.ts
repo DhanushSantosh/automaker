@@ -326,7 +326,10 @@ app.get('/api/health/detailed', createDetailedHandler());
 app.use('/api/fs', createFsRoutes(events));
 app.use('/api/agent', createAgentRoutes(agentService, events));
 app.use('/api/sessions', createSessionsRoutes(agentService));
-app.use('/api/features', createFeaturesRoutes(featureLoader, settingsService, events));
+app.use(
+  '/api/features',
+  createFeaturesRoutes(featureLoader, settingsService, events, autoModeService)
+);
 app.use('/api/auto-mode', createAutoModeRoutes(autoModeService));
 app.use('/api/enhance-prompt', createEnhancePromptRoutes(settingsService));
 app.use('/api/worktree', createWorktreeRoutes(events, settingsService));
@@ -769,21 +772,36 @@ process.on('uncaughtException', (error: Error) => {
   process.exit(1);
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM received, shutting down...');
+// Graceful shutdown timeout (30 seconds)
+const SHUTDOWN_TIMEOUT_MS = 30000;
+
+// Graceful shutdown helper
+const gracefulShutdown = async (signal: string) => {
+  logger.info(`${signal} received, shutting down...`);
+
+  // Set up a force-exit timeout to prevent hanging
+  const forceExitTimeout = setTimeout(() => {
+    logger.error(`Shutdown timed out after ${SHUTDOWN_TIMEOUT_MS}ms, forcing exit`);
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+
+  // Mark all running features as interrupted before shutdown
+  // This ensures they can be resumed when the server restarts
+  // Note: markAllRunningFeaturesInterrupted handles errors internally and never rejects
+  await autoModeService.markAllRunningFeaturesInterrupted(`${signal} signal received`);
+
   terminalService.cleanup();
   server.close(() => {
+    clearTimeout(forceExitTimeout);
     logger.info('Server closed');
     process.exit(0);
   });
+};
+
+process.on('SIGTERM', () => {
+  gracefulShutdown('SIGTERM');
 });
 
 process.on('SIGINT', () => {
-  logger.info('SIGINT received, shutting down...');
-  terminalService.cleanup();
-  server.close(() => {
-    logger.info('Server closed');
-    process.exit(0);
-  });
+  gracefulShutdown('SIGINT');
 });

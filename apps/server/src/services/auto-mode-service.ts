@@ -451,6 +451,19 @@ export class AutoModeService {
     this.settingsService = settingsService ?? null;
   }
 
+  /**
+   * Acquire a slot in the runningFeatures map for a feature.
+   * Implements reference counting via leaseCount to support nested calls
+   * (e.g., resumeFeature -> executeFeature).
+   *
+   * @param params.featureId - ID of the feature to track
+   * @param params.projectPath - Path to the project
+   * @param params.isAutoMode - Whether this is an auto-mode execution
+   * @param params.allowReuse - If true, allows incrementing leaseCount for already-running features
+   * @param params.abortController - Optional abort controller to use
+   * @returns The RunningFeature entry (existing or newly created)
+   * @throws Error if feature is already running and allowReuse is false
+   */
   private acquireRunningFeature(params: {
     featureId: string;
     projectPath: string;
@@ -463,7 +476,7 @@ export class AutoModeService {
       if (!params.allowReuse) {
         throw new Error('already running');
       }
-      existing.leaseCount = (existing.leaseCount ?? 1) + 1;
+      existing.leaseCount += 1;
       return existing;
     }
 
@@ -482,6 +495,14 @@ export class AutoModeService {
     return entry;
   }
 
+  /**
+   * Release a slot in the runningFeatures map for a feature.
+   * Decrements leaseCount and only removes the entry when it reaches zero,
+   * unless force option is used.
+   *
+   * @param featureId - ID of the feature to release
+   * @param options.force - If true, immediately removes the entry regardless of leaseCount
+   */
   private releaseRunningFeature(featureId: string, options?: { force?: boolean }): void {
     const entry = this.runningFeatures.get(featureId);
     if (!entry) {
@@ -493,7 +514,7 @@ export class AutoModeService {
       return;
     }
 
-    entry.leaseCount = (entry.leaseCount ?? 1) - 1;
+    entry.leaseCount -= 1;
     if (entry.leaseCount <= 0) {
       this.runningFeatures.delete(featureId);
     }
@@ -1838,7 +1859,17 @@ Complete the pipeline step instructions above. Review the previous work and appl
   }
 
   /**
-   * Resume a feature (continues from saved context)
+   * Resume a feature (continues from saved context or starts fresh if no context)
+   *
+   * This method handles interrupted features regardless of whether they have saved context:
+   * - With context: Continues from where the agent left off using the saved agent-output.md
+   * - Without context: Starts fresh execution (feature was interrupted before any agent output)
+   * - Pipeline features: Delegates to resumePipelineFeature for specialized handling
+   *
+   * @param projectPath - Path to the project
+   * @param featureId - ID of the feature to resume
+   * @param useWorktrees - Whether to use git worktrees for isolation
+   * @param _calledInternally - Internal flag to prevent double-tracking when called from other methods
    */
   async resumeFeature(
     projectPath: string,
@@ -1847,6 +1878,15 @@ Complete the pipeline step instructions above. Review the previous work and appl
     /** Internal flag: set to true when called from a method that already tracks the feature */
     _calledInternally = false
   ): Promise<void> {
+    // Idempotent check: if feature is already being resumed/running, skip silently
+    // This prevents race conditions when multiple callers try to resume the same feature
+    if (!_calledInternally && this.isFeatureRunning(featureId)) {
+      logger.info(
+        `[AutoMode] Feature ${featureId} is already being resumed/running, skipping duplicate resume request`
+      );
+      return;
+    }
+
     this.acquireRunningFeature({
       featureId,
       projectPath,
@@ -1861,6 +1901,10 @@ Complete the pipeline step instructions above. Review the previous work and appl
         throw new Error(`Feature ${featureId} not found`);
       }
 
+      logger.info(
+        `[AutoMode] Resuming feature ${featureId} (${feature.title}) - current status: ${feature.status}`
+      );
+
       // Check if feature is stuck in a pipeline step
       const pipelineInfo = await this.detectPipelineStatus(
         projectPath,
@@ -1871,6 +1915,9 @@ Complete the pipeline step instructions above. Review the previous work and appl
       if (pipelineInfo.isPipeline) {
         // Feature stuck in pipeline - use pipeline resume
         // Pass _alreadyTracked to prevent double-tracking
+        logger.info(
+          `[AutoMode] Feature ${featureId} is in pipeline step ${pipelineInfo.stepId}, using pipeline resume`
+        );
         return await this.resumePipelineFeature(projectPath, feature, useWorktrees, pipelineInfo);
       }
 
@@ -1884,17 +1931,44 @@ Complete the pipeline step instructions above. Review the previous work and appl
         await secureFs.access(contextPath);
         hasContext = true;
       } catch {
-        // No context
+        // No context - feature was interrupted before any agent output was saved
       }
 
       if (hasContext) {
         // Load previous context and continue
         // executeFeatureWithContext -> executeFeature will see feature is already tracked
         const context = (await secureFs.readFile(contextPath, 'utf-8')) as string;
+        logger.info(
+          `[AutoMode] Resuming feature ${featureId} with saved context (${context.length} chars)`
+        );
+
+        // Emit event for UI notification
+        this.emitAutoModeEvent('auto_mode_feature_resuming', {
+          featureId,
+          featureName: feature.title,
+          projectPath,
+          hasContext: true,
+          message: `Resuming feature "${feature.title}" from saved context`,
+        });
+
         return await this.executeFeatureWithContext(projectPath, featureId, context, useWorktrees);
       }
 
-      // No context, start fresh - executeFeature will see feature is already tracked
+      // No context - feature was interrupted before any agent output was saved
+      // Start fresh execution instead of leaving the feature stuck
+      logger.info(
+        `[AutoMode] Feature ${featureId} has no saved context - starting fresh execution`
+      );
+
+      // Emit event for UI notification
+      this.emitAutoModeEvent('auto_mode_feature_resuming', {
+        featureId,
+        featureName: feature.title,
+        projectPath,
+        hasContext: false,
+        message: `Starting fresh execution for interrupted feature "${feature.title}" (no previous context found)`,
+      });
+
       return await this.executeFeature(projectPath, featureId, useWorktrees, false, undefined, {
         _calledInternally: true,
       });
@@ -2038,8 +2112,8 @@ Complete the pipeline step instructions above. Review the previous work and appl
     // Check if the current step is excluded
     // If so, use getNextStatus to find the appropriate next step
     if (excludedStepIds.has(currentStep.id)) {
-      console.log(
-        `[AutoMode] Current step ${currentStep.id} is excluded for feature ${featureId}, finding next valid step`
+      logger.info(
+        `Current step ${currentStep.id} is excluded for feature ${featureId}, finding next valid step`
       );
       const nextStatus = pipelineService.getNextStatus(
         `pipeline_${currentStep.id}`,
@@ -2094,8 +2168,8 @@ Complete the pipeline step instructions above. Review the previous work and appl
     // Use the filtered steps for counting
     const sortedSteps = allSortedSteps.filter((step) => !excludedStepIds.has(step.id));
 
-    console.log(
-      `[AutoMode] Resuming pipeline for feature ${featureId} from step ${startFromStepIndex + 1}/${sortedSteps.length}`
+    logger.info(
+      `Resuming pipeline for feature ${featureId} from step ${startFromStepIndex + 1}/${sortedSteps.length}`
     );
 
     const runningEntry = this.acquireRunningFeature({
@@ -2118,11 +2192,9 @@ Complete the pipeline step instructions above. Review the previous work and appl
       if (useWorktrees && branchName) {
         worktreePath = await this.findExistingWorktreeForBranch(projectPath, branchName);
         if (worktreePath) {
-          console.log(`[AutoMode] Using worktree for branch "${branchName}": ${worktreePath}`);
+          logger.info(`Using worktree for branch "${branchName}": ${worktreePath}`);
         } else {
-          console.warn(
-            `[AutoMode] Worktree for branch "${branchName}" not found, using project path`
-          );
+          logger.warn(`Worktree for branch "${branchName}" not found, using project path`);
         }
       }
 
@@ -2174,7 +2246,7 @@ Complete the pipeline step instructions above. Review the previous work and appl
       const finalStatus = feature.skipTests ? 'waiting_approval' : 'verified';
       await this.updateFeatureStatus(projectPath, featureId, finalStatus);
 
-      console.log('[AutoMode] Pipeline resume completed successfully');
+      logger.info(`Pipeline resume completed successfully for feature ${featureId}`);
 
       this.emitAutoModeEvent('auto_mode_feature_complete', {
         featureId,
@@ -2197,7 +2269,7 @@ Complete the pipeline step instructions above. Review the previous work and appl
           projectPath,
         });
       } else {
-        console.error(`[AutoMode] Pipeline resume failed for feature ${featureId}:`, error);
+        logger.error(`Pipeline resume failed for feature ${featureId}:`, error);
         await this.updateFeatureStatus(projectPath, featureId, 'backlog');
         this.emitAutoModeEvent('auto_mode_error', {
           featureId,
@@ -3225,6 +3297,86 @@ Format your response as a structured markdown document.`;
     }
   }
 
+  /**
+   * Mark a feature as interrupted due to server restart or other interruption.
+   *
+   * This is a convenience helper that updates the feature status to 'interrupted',
+   * indicating the feature was in progress but execution was disrupted (e.g., server
+   * restart, process crash, or manual stop). Features with this status can be
+   * resumed later using the resume functionality.
+   *
+   * Note: Features with pipeline_* statuses are preserved rather than overwritten
+   * to 'interrupted'. This ensures that resumePipelineFeature() can pick up from
+   * the correct pipeline step after a restart.
+   *
+   * @param projectPath - Path to the project
+   * @param featureId - ID of the feature to mark as interrupted
+   * @param reason - Optional reason for the interruption (logged for debugging)
+   */
+  async markFeatureInterrupted(
+    projectPath: string,
+    featureId: string,
+    reason?: string
+  ): Promise<void> {
+    // Load the feature to check its current status
+    const feature = await this.loadFeature(projectPath, featureId);
+    const currentStatus = feature?.status;
+
+    // Preserve pipeline_* statuses so resumePipelineFeature can resume from the correct step
+    if (currentStatus && currentStatus.startsWith('pipeline_')) {
+      logger.info(
+        `Feature ${featureId} was in ${currentStatus}; preserving pipeline status for resume`
+      );
+      return;
+    }
+
+    if (reason) {
+      logger.info(`Marking feature ${featureId} as interrupted: ${reason}`);
+    } else {
+      logger.info(`Marking feature ${featureId} as interrupted`);
+    }
+
+    await this.updateFeatureStatus(projectPath, featureId, 'interrupted');
+  }
+
+  /**
+   * Mark all currently running features as interrupted.
+   *
+   * This method is called during graceful server shutdown to ensure that all
+   * features currently being executed are properly marked as 'interrupted'.
+   * This allows them to be detected and resumed when the server restarts.
+   *
+   * @param reason - Optional reason for the interruption (logged for debugging)
+   * @returns Promise that resolves when all features have been marked as interrupted
+   */
+  async markAllRunningFeaturesInterrupted(reason?: string): Promise<void> {
+    const runningCount = this.runningFeatures.size;
+
+    if (runningCount === 0) {
+      logger.info('No running features to mark as interrupted');
+      return;
+    }
+
+    const logReason = reason || 'server shutdown';
+    logger.info(`Marking ${runningCount} running feature(s) as interrupted due to: ${logReason}`);
+
+    const markPromises: Promise<void>[] = [];
+
+    for (const [featureId, runningFeature] of this.runningFeatures) {
+      markPromises.push(
+        this.markFeatureInterrupted(runningFeature.projectPath, featureId, logReason).catch(
+          (error) => {
+            logger.error(`Failed to mark feature ${featureId} as interrupted:`, error);
+          }
+        )
+      );
+    }
+
+    await Promise.all(markPromises);
+
+    logger.info(`Finished marking ${runningCount} feature(s) as interrupted`);
+  }
+
   private isFeatureFinished(feature: Feature): boolean {
     const isCompleted = feature.status === 'completed' || feature.status === 'verified';
 
@@ -3238,6 +3390,18 @@ Format your response as a structured markdown document.`;
     }
 
     return isCompleted;
+  }
+
+  /**
+   * Check if a feature is currently running (being executed or resumed).
+   * This is used for idempotent checks to prevent race conditions when
+   * multiple callers try to resume the same feature simultaneously.
+   *
+   * @param featureId - The ID of the feature to check
+   * @returns true if the feature is currently running, false otherwise
+   */
+  isFeatureRunning(featureId: string): boolean {
+    return this.runningFeatures.has(featureId);
   }
 
   /**
@@ -5191,7 +5355,9 @@ After generating the revised spec, output:
 
     try {
       const entries = await secureFs.readdir(featuresDir, { withFileTypes: true });
-      const interruptedFeatures: Feature[] = [];
+      // Track features with and without context separately for better logging
+      const featuresWithContext: Feature[] = [];
+      const featuresWithoutContext: Feature[] = [];
 
       for (const entry of entries) {
         if (entry.isDirectory()) {
@@ -5216,55 +5382,71 @@ After generating the revised spec, output:
             feature.status === 'in_progress' ||
             (feature.status && feature.status.startsWith('pipeline_'))
           ) {
-            // Verify it has existing context (agent-output.md)
+            // Check if context (agent-output.md) exists
             const featureDir = getFeatureDir(projectPath, feature.id);
             const contextPath = path.join(featureDir, 'agent-output.md');
             try {
               await secureFs.access(contextPath);
-              interruptedFeatures.push(feature);
+              featuresWithContext.push(feature);
               logger.info(
-                `Found interrupted feature: ${feature.id} (${feature.title}) - status: ${feature.status}`
+                `Found interrupted feature with context: ${feature.id} (${feature.title}) - status: ${feature.status}`
               );
             } catch {
-              // No context file, skip this feature - it will be restarted fresh
-              logger.info(`Interrupted feature ${feature.id} has no context, will restart fresh`);
+              // No context file - feature was interrupted before any agent output
+              // Still include it for resumption (will start fresh)
+              featuresWithoutContext.push(feature);
+              logger.info(
+                `Found interrupted feature without context: ${feature.id} (${feature.title}) - status: ${feature.status} (will restart fresh)`
+              );
             }
           }
         }
       }
 
-      if (interruptedFeatures.length === 0) {
+      // Combine all interrupted features (with and without context)
+      const allInterruptedFeatures = [...featuresWithContext, ...featuresWithoutContext];
+
+      if (allInterruptedFeatures.length === 0) {
         logger.info('No interrupted features found');
         return;
       }
 
-      logger.info(`Found ${interruptedFeatures.length} interrupted feature(s) to resume`);
+      logger.info(
+        `Found ${allInterruptedFeatures.length} interrupted feature(s) to resume ` +
+          `(${featuresWithContext.length} with context, ${featuresWithoutContext.length} without context)`
+      );
 
-      // Emit event to notify UI
+      // Emit event to notify UI with context information
       this.emitAutoModeEvent('auto_mode_resuming_features', {
-        message: `Resuming ${interruptedFeatures.length} interrupted feature(s) after server restart`,
+        message: `Resuming ${allInterruptedFeatures.length} interrupted feature(s) after server restart`,
         projectPath,
-        featureIds: interruptedFeatures.map((f) => f.id),
-        features: interruptedFeatures.map((f) => ({
+        featureIds: allInterruptedFeatures.map((f) => f.id),
+        features: allInterruptedFeatures.map((f) => ({
           id: f.id,
           title: f.title,
           status: f.status,
           branchName: f.branchName ?? null,
+          hasContext: featuresWithContext.some((fc) => fc.id === f.id),
         })),
       });
 
       // Resume each interrupted feature
-      for (const feature of interruptedFeatures) {
+      for (const feature of allInterruptedFeatures) {
         try {
-          // Skip if feature is already running (prevents "already running" error)
-          if (this.runningFeatures.has(feature.id)) {
+          // Idempotent check: skip if feature is already being resumed (prevents race conditions)
+          if (this.isFeatureRunning(feature.id)) {
             logger.info(
-              `Feature ${feature.id} (${feature.title}) is already running, skipping resume`
+              `Feature ${feature.id} (${feature.title}) is already being resumed, skipping`
             );
             continue;
           }
-          logger.info(`Resuming feature: ${feature.id} (${feature.title})`);
-          // Use resumeFeature which will detect the existing context and continue
+
+          const hasContext = featuresWithContext.some((fc) => fc.id === feature.id);
+          logger.info(
+            `Resuming feature: ${feature.id} (${feature.title}) - ${hasContext ? 'continuing from context' : 'starting fresh'}`
+          );
+          // Use resumeFeature which will detect the existing context and continue,
+          // or start fresh if no context exists
           await this.resumeFeature(projectPath, feature.id, true);
         } catch (error) {
           logger.error(`Failed to resume feature ${feature.id}:`, error);
@@ -5463,5 +5645,108 @@ After generating the revised spec, output:
     } catch (error) {
       console.warn(`[AutoMode] Failed to extract learnings from feature ${feature.id}:`, error);
     }
+  }
+
+  /**
+   * Detect orphaned features - features whose branchName points to a branch that no longer exists.
+   *
+   * Orphaned features can occur when:
+   * - A feature branch is deleted after merge
+   * - A worktree is manually removed
+   * - A branch is force-deleted
+   *
+   * @param projectPath - Path to the project
+   * @returns Array of orphaned features with their missing branch names
+   */
+  async detectOrphanedFeatures(
+    projectPath: string
+  ): Promise<Array<{ feature: Feature; missingBranch: string }>> {
+    const orphanedFeatures: Array<{ feature: Feature; missingBranch: string }> = [];
+
+    try {
+      // Get all features for this project
+      const allFeatures = await this.featureLoader.getAll(projectPath);
+
+      // Get features that have a branchName set (excludes main branch features)
+      const featuresWithBranches = allFeatures.filter(
+        (f) => f.branchName && f.branchName.trim() !== ''
+      );
+
+      if (featuresWithBranches.length === 0) {
+        logger.debug('[detectOrphanedFeatures] No features with branch names found');
+        return orphanedFeatures;
+      }
+
+      // Get all existing branches (local)
+      const existingBranches = await this.getExistingBranches(projectPath);
+
+      // Get current/primary branch (features with null branchName are implicitly on this)
+      const primaryBranch = await getCurrentBranch(projectPath);
+
+      // Check each feature with a branchName
+      for (const feature of featuresWithBranches) {
+        const branchName = feature.branchName!;
+
+        // Skip if the branchName matches the primary branch (implicitly valid)
+        if (primaryBranch && branchName === primaryBranch) {
+          continue;
+        }
+
+        // Check if the branch exists
+        if (!existingBranches.has(branchName)) {
+          orphanedFeatures.push({
+            feature,
+            missingBranch: branchName,
+          });
+          logger.info(
+            `[detectOrphanedFeatures] Found orphaned feature: ${feature.id} (${feature.title}) - branch "${branchName}" no longer exists`
+          );
+        }
+      }
+
+      if (orphanedFeatures.length > 0) {
+        logger.info(
+          `[detectOrphanedFeatures] Found ${orphanedFeatures.length} orphaned feature(s) in ${projectPath}`
+        );
+      } else {
+        logger.debug('[detectOrphanedFeatures] No orphaned features found');
+      }
+
+      return orphanedFeatures;
+    } catch (error) {
+      logger.error('[detectOrphanedFeatures] Error detecting orphaned features:', error);
+      return orphanedFeatures;
+    }
+  }
+
+  /**
+   * Get all existing local branches for a project
+   * @param projectPath - Path to the git repository
+   * @returns Set of branch names
+   */
+  private async getExistingBranches(projectPath: string): Promise<Set<string>> {
+    const branches = new Set<string>();
+
+    try {
+      // Use git for-each-ref to get all local branches
+      const { stdout } = await execAsync(
+        'git for-each-ref --format="%(refname:short)" refs/heads/',
+        { cwd: projectPath }
+      );
+
+      const branchLines = stdout.trim().split('\n');
+      for (const branch of branchLines) {
+        const trimmed = branch.trim();
+        if (trimmed) {
+          branches.add(trimmed);
+        }
+      }
+
+      logger.debug(`[getExistingBranches] Found ${branches.size} local branches`);
+    } catch (error) {
+      logger.error('[getExistingBranches] Failed to get branches:', error);
+    }
+
+    return branches;
   }
 }
