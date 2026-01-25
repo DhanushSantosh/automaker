@@ -199,7 +199,6 @@ export function ProjectContextMenu({
   } = useAppStore();
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
   const [showThemeSubmenu, setShowThemeSubmenu] = useState(false);
-  const [removeConfirmed, setRemoveConfirmed] = useState(false);
   const themeSubmenuRef = useRef<HTMLDivElement>(null);
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -331,7 +330,6 @@ export function ProjectContextMenu({
     toast.success('Project removed', {
       description: `${project.name} has been removed from your projects list`,
     });
-    setRemoveConfirmed(true);
   }, [moveProjectToTrash, project.id, project.name]);
 
   const handleDialogClose = useCallback(
@@ -340,8 +338,6 @@ export function ProjectContextMenu({
       // Close the context menu when dialog closes (whether confirmed or cancelled)
       // This prevents the context menu from reappearing after dialog interaction
       if (!isOpen) {
-        // Reset confirmation state
-        setRemoveConfirmed(false);
         // Always close the context menu when dialog closes
         onClose();
       }

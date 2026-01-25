@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck - badge component prop variations with conditional rendering
 import { memo, useEffect, useMemo, useState } from 'react';
 import { Feature, useAppStore } from '@/store/app-store';
 import { cn } from '@/lib/utils';

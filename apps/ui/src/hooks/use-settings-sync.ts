@@ -34,7 +34,6 @@ import {
   migratePhaseModelEntry,
   type GlobalSettings,
   type CursorModelId,
-  type OpencodeModelId,
   type CodexModelId,
   type GeminiModelId,
   type CopilotModelId,

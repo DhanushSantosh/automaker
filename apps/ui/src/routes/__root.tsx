@@ -185,14 +185,10 @@ function RootLayoutContent() {
   // Load project settings when switching projects
   useProjectSettingsLoader();
 
-  // Check if we're in compact mode (< 1240px)
-  const isCompact = useIsCompact();
-
   const isSetupRoute = location.pathname === '/setup';
   const isLoginRoute = location.pathname === '/login';
   const isLoggedOutRoute = location.pathname === '/logged-out';
   const isDashboardRoute = location.pathname === '/dashboard';
-  const isBoardRoute = location.pathname === '/board';
   const isRootRoute = location.pathname === '/';
   const [autoOpenStatus, setAutoOpenStatus] = useState<AutoOpenStatus>(AUTO_OPEN_STATUS.idle);
   const autoOpenCandidate = selectAutoOpenProject(currentProject, projects, projectHistory);
@@ -259,11 +255,8 @@ function RootLayoutContent() {
 
   // Get effective theme and fonts for the current project
   // Note: theme/fontFamilySans/fontFamilyMono are destructured above to ensure re-renders when they change
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   void theme; // Used for subscription
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   void fontFamilySans; // Used for subscription
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   void fontFamilyMono; // Used for subscription
   const effectiveFontSans = getEffectiveFontSans();
   const effectiveFontMono = getEffectiveFontMono();

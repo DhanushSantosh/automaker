@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck - interview flow state machine with dynamic question handling
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { createLogger } from '@automaker/utils/logger';
 import { useAppStore, Feature } from '@/store/app-store';

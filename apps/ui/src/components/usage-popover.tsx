@@ -25,8 +25,6 @@ type UsageError = {
   message: string;
 };
 
-// Fixed refresh interval (45 seconds)
-const REFRESH_INTERVAL_SECONDS = 45;
 const CLAUDE_SESSION_WINDOW_HOURS = 5;
 
 // Helper to format reset time for Codex
@@ -228,15 +226,6 @@ export function UsagePopover() {
 
   // Calculate max percentage for header button
   const claudeSessionPercentage = claudeUsage?.sessionPercentage || 0;
-
-  const codexMaxPercentage = codexUsage?.rateLimits
-    ? Math.max(
-        codexUsage.rateLimits.primary?.usedPercent || 0,
-        codexUsage.rateLimits.secondary?.usedPercent || 0
-      )
-    : 0;
-
-  const isStale = activeTab === 'claude' ? isClaudeStale : isCodexStale;
 
   const getProgressBarColor = (percentage: number) => {
     if (percentage >= 80) return 'bg-red-500';

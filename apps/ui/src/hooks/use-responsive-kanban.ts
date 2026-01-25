@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck - responsive breakpoint logic with layout state calculations
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useAppStore } from '@/store/app-store';
 

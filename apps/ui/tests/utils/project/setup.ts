@@ -620,7 +620,7 @@ export async function setupMockMultipleProjects(
   projectCount: number = 3
 ): Promise<void> {
   await page.addInitScript((count: number) => {
-    const mockProjects = [];
+    const mockProjects: TestProject[] = [];
     for (let i = 0; i < count; i++) {
       mockProjects.push({
         id: `test-project-${i + 1}`,

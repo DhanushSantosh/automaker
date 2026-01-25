@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { SkeletonPulse } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
-import { CheckCircle2, AlertCircle, RefreshCw, Key } from 'lucide-react';
+import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CliStatus } from '../shared/types';
 import { GeminiIcon } from '@/components/ui/provider-icon';

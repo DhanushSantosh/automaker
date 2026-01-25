@@ -17,7 +17,6 @@ import {
   setupWelcomeView,
   authenticateForTests,
   handleLoginScreenIfPresent,
-  waitForNetworkIdle,
 } from '../utils';
 
 // Create unique temp dir for this test run

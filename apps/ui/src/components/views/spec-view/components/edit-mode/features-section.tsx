@@ -32,6 +32,7 @@ function featureToInternal(feature: Feature): FeatureWithId {
 }
 
 function internalToFeature(internal: FeatureWithId): Feature {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { _id, _locationIds, ...feature } = internal;
   return feature;
 }

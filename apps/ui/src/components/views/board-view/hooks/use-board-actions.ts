@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck - feature update logic with partial updates and image/file handling
 import { useCallback } from 'react';
 import {
   Feature,

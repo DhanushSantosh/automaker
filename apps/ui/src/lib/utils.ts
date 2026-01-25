@@ -1,7 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import type { ModelAlias, ModelProvider } from '@/store/app-store';
-import { CODEX_MODEL_CONFIG_MAP, codexModelHasThinking } from '@automaker/types';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

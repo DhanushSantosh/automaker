@@ -86,8 +86,6 @@ const MEMORY_TASKS: PhaseConfig[] = [
   },
 ];
 
-const ALL_PHASES = [...QUICK_TASKS, ...VALIDATION_TASKS, ...GENERATION_TASKS, ...MEMORY_TASKS];
-
 /**
  * Default feature model override section for per-project settings.
  */

@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck - graph view page with feature filtering and visualization state
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useAppStore, Feature } from '@/store/app-store';
 import { useShallow } from 'zustand/react/shallow';
@@ -9,12 +9,7 @@ import {
   AgentOutputModal,
   BacklogPlanDialog,
 } from './board-view/dialogs';
-import {
-  useBoardFeatures,
-  useBoardActions,
-  useBoardBackground,
-  useBoardPersistence,
-} from './board-view/hooks';
+import { useBoardFeatures, useBoardActions, useBoardPersistence } from './board-view/hooks';
 import { useWorktrees } from './board-view/worktree-panel/hooks';
 import { useAutoMode } from '@/hooks/use-auto-mode';
 import { pathsEqual } from '@/lib/utils';
@@ -242,7 +237,7 @@ export function GraphViewPage() {
   const [followUpFeature, setFollowUpFeature] = useState<Feature | null>(null);
   const [followUpPrompt, setFollowUpPrompt] = useState('');
   const [followUpImagePaths, setFollowUpImagePaths] = useState<any[]>([]);
-  const [followUpPreviewMap, setFollowUpPreviewMap] = useState<Map<string, string>>(new Map());
+  const [, setFollowUpPreviewMap] = useState<Map<string, string>>(new Map());
 
   // In-progress features for shortcuts
   const inProgressFeaturesForShortcuts = useMemo(() => {

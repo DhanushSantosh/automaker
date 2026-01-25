@@ -1,5 +1,5 @@
-// @ts-nocheck
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+// @ts-nocheck - dnd-kit type incompatibilities with collision detection and complex state management
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createLogger } from '@automaker/utils/logger';
 import {
   DndContext,
@@ -29,16 +29,13 @@ class DialogAwarePointerSensor extends PointerSensor {
 import { useAppStore, Feature } from '@/store/app-store';
 import { getElectronAPI } from '@/lib/electron';
 import { getHttpApiClient } from '@/lib/http-api-client';
-import type { AutoModeEvent } from '@/types/electron';
-import type { ModelAlias, CursorModelId, BacklogPlanResult } from '@automaker/types';
+import type { BacklogPlanResult } from '@automaker/types';
 import { pathsEqual } from '@/lib/utils';
 import { toast } from 'sonner';
-import { getBlockingDependencies } from '@automaker/dependency-resolver';
 import { BoardBackgroundModal } from '@/components/dialogs/board-background-modal';
 import { Spinner } from '@/components/ui/spinner';
 import { useShallow } from 'zustand/react/shallow';
 import { useAutoMode } from '@/hooks/use-auto-mode';
-import { useKeyboardShortcutsConfig } from '@/hooks/use-keyboard-shortcuts';
 import { useWindowState } from '@/hooks/use-window-state';
 // Board-view specific imports
 import { BoardHeader } from './board-view/board-header';
@@ -97,8 +94,6 @@ const logger = createLogger('Board');
 export function BoardView() {
   const {
     currentProject,
-    maxConcurrency: legacyMaxConcurrency,
-    setMaxConcurrency: legacySetMaxConcurrency,
     defaultSkipTests,
     specCreatingForProject,
     setSpecCreatingForProject,
@@ -109,9 +104,6 @@ export function BoardView() {
     setCurrentWorktree,
     getWorktrees,
     setWorktrees,
-    useWorktrees,
-    enableDependencyBlocking,
-    skipVerificationInAutoMode,
     planUseSelectedWorktreeBranch,
     addFeatureUseSelectedWorktreeBranch,
     isPrimaryWorktreeBranch,
@@ -120,8 +112,6 @@ export function BoardView() {
   } = useAppStore(
     useShallow((state) => ({
       currentProject: state.currentProject,
-      maxConcurrency: state.maxConcurrency,
-      setMaxConcurrency: state.setMaxConcurrency,
       defaultSkipTests: state.defaultSkipTests,
       specCreatingForProject: state.specCreatingForProject,
       setSpecCreatingForProject: state.setSpecCreatingForProject,
@@ -132,9 +122,6 @@ export function BoardView() {
       setCurrentWorktree: state.setCurrentWorktree,
       getWorktrees: state.getWorktrees,
       setWorktrees: state.setWorktrees,
-      useWorktrees: state.useWorktrees,
-      enableDependencyBlocking: state.enableDependencyBlocking,
-      skipVerificationInAutoMode: state.skipVerificationInAutoMode,
       planUseSelectedWorktreeBranch: state.planUseSelectedWorktreeBranch,
       addFeatureUseSelectedWorktreeBranch: state.addFeatureUseSelectedWorktreeBranch,
       isPrimaryWorktreeBranch: state.isPrimaryWorktreeBranch,
@@ -151,12 +138,9 @@ export function BoardView() {
   // Subscribe to worktreePanelVisibleByProject to trigger re-renders when it changes
   const worktreePanelVisibleByProject = useAppStore((state) => state.worktreePanelVisibleByProject);
   // Subscribe to showInitScriptIndicatorByProject to trigger re-renders when it changes
-  const showInitScriptIndicatorByProject = useAppStore(
-    (state) => state.showInitScriptIndicatorByProject
-  );
+  useAppStore((state) => state.showInitScriptIndicatorByProject);
   const getShowInitScriptIndicator = useAppStore((state) => state.getShowInitScriptIndicator);
   const getDefaultDeleteBranch = useAppStore((state) => state.getDefaultDeleteBranch);
-  const shortcuts = useKeyboardShortcutsConfig();
   const {
     features: hookFeatures,
     isLoading,
@@ -535,8 +519,6 @@ export function BoardView() {
     handleMoveBackToInProgress,
     handleOpenFollowUp,
     handleSendFollowUp,
-    handleCommitFeature,
-    handleMergeFeature,
     handleCompleteFeature,
     handleUnarchiveFeature,
     handleViewOutput,

@@ -58,8 +58,6 @@ export function SettingsView() {
     setDefaultRequirePlanApproval,
     defaultFeatureModel,
     setDefaultFeatureModel,
-    autoLoadClaudeMd,
-    setAutoLoadClaudeMd,
     promptCustomization,
     setPromptCustomization,
     skipSandboxWarning,

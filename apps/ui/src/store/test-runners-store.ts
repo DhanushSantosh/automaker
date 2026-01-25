@@ -155,6 +155,7 @@ export const useTestRunnersStore = create<TestRunnersState & TestRunnersActions>
       const finishedAt = new Date().toISOString();
 
       // Remove from active sessions since it's no longer running
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [session.worktreePath]: _, ...remainingActive } = state.activeSessionByWorktree;
 
       return {

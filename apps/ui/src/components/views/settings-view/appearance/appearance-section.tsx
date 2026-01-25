@@ -12,7 +12,6 @@ import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
 import { FontSelector } from '@/components/shared';
 import type { Theme } from '../shared/types';
-import type { SidebarStyle } from '@automaker/types';
 
 interface AppearanceSectionProps {
   effectiveTheme: Theme;

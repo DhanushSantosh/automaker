@@ -6,7 +6,7 @@
  * through WebSocket (indicating the connection is healthy).
  */
 
-import { useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { create } from 'zustand';
 
 /**

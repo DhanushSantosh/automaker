@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck - CLI setup wizard with step validation and setup store state
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

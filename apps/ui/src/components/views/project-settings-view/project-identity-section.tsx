@@ -97,7 +97,7 @@ export function ProjectIdentitySection({ project }: ProjectIdentitySectionProps)
               description: result.error || 'Please try again.',
             });
           }
-        } catch (error) {
+        } catch {
           toast.error('Failed to upload icon', {
             description: 'Network error. Please try again.',
           });

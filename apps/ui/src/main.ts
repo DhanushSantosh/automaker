@@ -28,8 +28,6 @@ import {
   // Electron app bundle operations
   setElectronAppPaths,
   electronAppExists,
-  electronAppReadFileSync,
-  electronAppStatSync,
   electronAppStat,
   electronAppReadFile,
   // System path operations
@@ -108,10 +106,6 @@ async function findAvailablePort(preferredPort: number): Promise<number> {
 // Calculation: 4 columns × 280px + 3 gaps × 20px + 40px padding = 1220px board content
 // With sidebar expanded (288px): 1220 + 288 = 1508px
 // Minimum window dimensions - reduced to allow smaller windows since kanban now supports horizontal scrolling
-const SIDEBAR_EXPANDED = 288;
-const SIDEBAR_COLLAPSED = 64;
-
-const MIN_WIDTH_EXPANDED = 800; // Reduced - horizontal scrolling handles overflow
 const MIN_WIDTH_COLLAPSED = 600; // Reduced - horizontal scrolling handles overflow
 const MIN_HEIGHT = 500; // Reduced to allow more flexibility
 const DEFAULT_WIDTH = 1600;

@@ -1,13 +1,12 @@
-// @ts-nocheck
+// @ts-nocheck - model selector with provider-specific model options and validation
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Brain, AlertTriangle } from 'lucide-react';
 import { AnthropicIcon, CursorIcon, OpenAIIcon } from '@/components/ui/provider-icon';
 import { cn } from '@/lib/utils';
-import type { ModelAlias } from '@/store/app-store';
 import { useAppStore } from '@/store/app-store';
 import { useSetupStore } from '@/store/setup-store';
-import { getModelProvider, PROVIDER_PREFIXES, stripProviderPrefix } from '@automaker/types';
+import { getModelProvider } from '@automaker/types';
 import type { ModelProvider } from '@automaker/types';
 import { CLAUDE_MODELS, CURSOR_MODELS, ModelOption } from './model-constants';
 import { useEffect } from 'react';

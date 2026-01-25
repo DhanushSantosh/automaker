@@ -36,7 +36,7 @@ export function TaskProgressPanel({
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+  const [, setCurrentTaskId] = useState<string | null>(null);
 
   // Load initial tasks from feature's planSpec
   const loadInitialTasks = useCallback(async () => {
@@ -236,7 +236,7 @@ export function TaskProgressPanel({
             <div className="absolute left-[2.35rem] top-4 bottom-8 w-px bg-linear-to-b from-border/80 via-border/40 to-transparent" />
 
             <div className="space-y-5">
-              {tasks.map((task, index) => {
+              {tasks.map((task, _index) => {
                 const isActive = task.status === 'in_progress';
                 const isCompleted = task.status === 'completed';
                 const isPending = task.status === 'pending';

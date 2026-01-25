@@ -2,12 +2,7 @@ import { memo, useEffect, useState, useMemo, useRef } from 'react';
 import { Feature, ThinkingLevel, ParsedTask } from '@/store/app-store';
 import type { ReasoningEffort } from '@automaker/types';
 import { getProviderFromModel } from '@/lib/utils';
-import {
-  AgentTaskInfo,
-  parseAgentContext,
-  formatModelName,
-  DEFAULT_MODEL,
-} from '@/lib/agent-context-parser';
+import { parseAgentContext, formatModelName, DEFAULT_MODEL } from '@/lib/agent-context-parser';
 import { cn } from '@/lib/utils';
 import type { AutoModeEvent } from '@/types/electron';
 import { Brain, ListTodo, Sparkles, Expand, CheckCircle2, Circle, Wrench } from 'lucide-react';

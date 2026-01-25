@@ -282,7 +282,7 @@ export function AgentOutputModal({
       }
 
       if (newContent) {
-        setOutput((prev) => `${prev}${newContent}`);
+        setStreamedContent((prev) => prev + newContent);
       }
     });
 

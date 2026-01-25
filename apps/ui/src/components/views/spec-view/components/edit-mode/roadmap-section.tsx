@@ -27,6 +27,7 @@ function phaseToInternal(phase: RoadmapPhase): PhaseWithId {
 }
 
 function internalToPhase(internal: PhaseWithId): RoadmapPhase {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { _id, ...phase } = internal;
   return phase;
 }

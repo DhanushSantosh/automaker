@@ -11,7 +11,6 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { AlertCircle } from 'lucide-react';
-import { modelSupportsThinking } from '@/lib/utils';
 import { Feature, ModelAlias, ThinkingLevel, PlanningMode } from '@/store/app-store';
 import {
   TestingTabContent,
@@ -22,7 +21,7 @@ import {
 } from '../shared';
 import type { WorkMode } from '../shared';
 import { PhaseModelSelector } from '@/components/views/settings-view/model-defaults/phase-model-selector';
-import { isCursorModel, type PhaseModelEntry } from '@automaker/types';
+import type { PhaseModelEntry } from '@automaker/types';
 import { cn } from '@/lib/utils';
 
 interface MassEditDialogProps {
@@ -240,8 +239,6 @@ export function MassEditDialog({
   };
 
   const hasAnyApply = Object.values(applyState).some(Boolean);
-  const isCurrentModelCursor = isCursorModel(model);
-  const modelAllowsThinking = !isCurrentModelCursor && modelSupportsThinking(model);
 
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose()}>

@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, type KeyboardEvent } from 'react';
-import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Terminal, Save, RotateCcw, Info, X, Play, FlaskConical } from 'lucide-react';

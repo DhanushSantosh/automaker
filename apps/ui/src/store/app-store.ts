@@ -1731,7 +1731,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   },
 
   upsertAndSetCurrentProject: (path, name, theme) => {
-    const { projects, trashedProjects, currentProject, theme: globalTheme } = get();
+    const { projects, trashedProjects } = get();
     const existingProject = projects.find((p) => p.path === path);
     let project: Project;
 
@@ -2108,6 +2108,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     let newOverrides: typeof currentOverrides;
     if (entry === null) {
       // Remove the override (use global)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [phase]: _, ...rest } = currentOverrides;
       newOverrides = rest;
     } else {
@@ -4367,6 +4368,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
 
   clearInitScriptState: (projectPath, branch) => {
     const key = `${projectPath}::${branch}`;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [key]: _, ...rest } = get().initScriptState;
     set({ initScriptState: rest });
   },

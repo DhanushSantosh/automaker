@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck - dnd-kit draggable/droppable ref combination type incompatibilities
 import React, { memo, useLayoutEffect, useState, useCallback } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { cn } from '@/lib/utils';

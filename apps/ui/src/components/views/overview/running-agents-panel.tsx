@@ -9,10 +9,8 @@ import { useNavigate } from '@tanstack/react-router';
 import { useAppStore } from '@/store/app-store';
 import { initializeProject } from '@/lib/project-init';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 import type { ProjectStatus } from '@automaker/types';
 import { Bot, Activity, GitBranch, ArrowRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
 interface RunningAgentsPanelProps {
   projects: ProjectStatus[];
