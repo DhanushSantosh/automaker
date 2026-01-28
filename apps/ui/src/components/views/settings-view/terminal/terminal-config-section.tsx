@@ -24,6 +24,14 @@ import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
 import { toast } from 'sonner';
 import { PromptPreview } from './prompt-preview';
+import type { TerminalPromptTheme } from '@automaker/types';
+import {
+  PROMPT_THEME_CUSTOM_ID,
+  PROMPT_THEME_PRESETS,
+  getMatchingPromptThemeId,
+  getPromptThemePreset,
+  type PromptThemeConfig,
+} from './prompt-theme-presets';
 import { useUpdateGlobalSettings } from '@/hooks/mutations/use-settings-mutations';
 import { useGlobalSettings } from '@/hooks/queries/use-settings';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -49,6 +57,7 @@ export function TerminalConfigSection() {
     enabled: false,
     customPrompt: true,
     promptFormat: 'standard' as const,
+    promptTheme: PROMPT_THEME_CUSTOM_ID,
     showGitBranch: true,
     showGitStatus: true,
     showUserHost: true,
@@ -70,6 +79,29 @@ export function TerminalConfigSection() {
       globalSettings?.terminalConfig?.customEnvVars ?? defaultTerminalConfig.customEnvVars,
   };
 
+  const promptThemeConfig: PromptThemeConfig = {
+    promptFormat: terminalConfig.promptFormat,
+    showGitBranch: terminalConfig.showGitBranch,
+    showGitStatus: terminalConfig.showGitStatus,
+    showUserHost: terminalConfig.showUserHost,
+    showPath: terminalConfig.showPath,
+    pathStyle: terminalConfig.pathStyle,
+    pathDepth: terminalConfig.pathDepth,
+    showTime: terminalConfig.showTime,
+    showExitStatus: terminalConfig.showExitStatus,
+  };
+
+  const storedPromptTheme = terminalConfig.promptTheme;
+  const activePromptThemeId =
+    storedPromptTheme === PROMPT_THEME_CUSTOM_ID
+      ? PROMPT_THEME_CUSTOM_ID
+      : (storedPromptTheme ?? getMatchingPromptThemeId(promptThemeConfig));
+  const isOmpTheme =
+    storedPromptTheme !== undefined && storedPromptTheme !== PROMPT_THEME_CUSTOM_ID;
+  const promptThemePreset = isOmpTheme
+    ? getPromptThemePreset(storedPromptTheme as TerminalPromptTheme)
+    : null;
+
   const applyEnabledUpdate = (enabled: boolean) => {
     // Ensure all required fields are present
     const updatedConfig = {
@@ -84,12 +116,11 @@ export function TerminalConfigSection() {
       pathDepth: terminalConfig.pathDepth,
       showTime: terminalConfig.showTime,
       showExitStatus: terminalConfig.showExitStatus,
+      promptTheme: terminalConfig.promptTheme ?? PROMPT_THEME_CUSTOM_ID,
       customAliases: terminalConfig.customAliases,
       customEnvVars: terminalConfig.customEnvVars,
       rcFileVersion: 1,
     };
-
-    console.log('[TerminalConfig] Updating settings with:', updatedConfig);
 
     updateGlobalSettings.mutate(
       { terminalConfig: updatedConfig },
@@ -124,11 +155,32 @@ export function TerminalConfigSection() {
   };
 
   const handleUpdateConfig = (updates: Partial<typeof terminalConfig>) => {
+    const nextPromptTheme = updates.promptTheme ?? PROMPT_THEME_CUSTOM_ID;
+
     updateGlobalSettings.mutate({
       terminalConfig: {
         ...terminalConfig,
         ...updates,
+        promptTheme: nextPromptTheme,
       },
+    });
+  };
+
+  const handlePromptThemeChange = (themeId: string) => {
+    if (themeId === PROMPT_THEME_CUSTOM_ID) {
+      handleUpdateConfig({ promptTheme: PROMPT_THEME_CUSTOM_ID });
+      return;
+    }
+
+    const preset = getPromptThemePreset(themeId as TerminalPromptTheme);
+    if (!preset) {
+      handleUpdateConfig({ promptTheme: PROMPT_THEME_CUSTOM_ID });
+      return;
+    }
+
+    handleUpdateConfig({
+      ...preset.config,
+      promptTheme: preset.id,
     });
   };
 
@@ -238,12 +290,53 @@ export function TerminalConfigSection() {
               <>
                 {/* Prompt Format */}
                 <div className="space-y-3">
+                  <Label className="text-foreground font-medium">Prompt Theme (Oh My Posh)</Label>
+                  <Select value={activePromptThemeId} onValueChange={handlePromptThemeChange}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={PROMPT_THEME_CUSTOM_ID}>
+                        <div className="space-y-0.5">
+                          <div>Custom</div>
+                          <div className="text-xs text-muted-foreground">
+                            Hand-tuned configuration
+                          </div>
+                        </div>
+                      </SelectItem>
+                      {PROMPT_THEME_PRESETS.map((preset) => (
+                        <SelectItem key={preset.id} value={preset.id}>
+                          <div className="space-y-0.5">
+                            <div>{preset.label}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {preset.description}
+                            </div>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {isOmpTheme && (
+                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 flex gap-2">
+                    <Info className="h-4 w-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                    <div className="text-xs text-foreground/80">
+                      <strong>{promptThemePreset?.label ?? 'Oh My Posh theme'}</strong> uses the
+                      oh-my-posh CLI for rendering. Ensure it&apos;s installed for the full theme.
+                      Prompt format and segment toggles are ignored while an OMP theme is selected.
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-3">
                   <Label className="text-foreground font-medium">Prompt Format</Label>
                   <Select
                     value={terminalConfig.promptFormat}
                     onValueChange={(value: 'standard' | 'minimal' | 'powerline' | 'starship') =>
                       handleUpdateConfig({ promptFormat: value })
                     }
+                    disabled={isOmpTheme}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -293,6 +386,7 @@ export function TerminalConfigSection() {
                     <Switch
                       checked={terminalConfig.showGitBranch}
                       onCheckedChange={(checked) => handleUpdateConfig({ showGitBranch: checked })}
+                      disabled={isOmpTheme}
                     />
                   </div>
 
@@ -304,7 +398,7 @@ export function TerminalConfigSection() {
                     <Switch
                       checked={terminalConfig.showGitStatus}
                       onCheckedChange={(checked) => handleUpdateConfig({ showGitStatus: checked })}
-                      disabled={!terminalConfig.showGitBranch}
+                      disabled={!terminalConfig.showGitBranch || isOmpTheme}
                     />
                   </div>
                 </div>
@@ -319,6 +413,7 @@ export function TerminalConfigSection() {
                     <Switch
                       checked={terminalConfig.showUserHost}
                       onCheckedChange={(checked) => handleUpdateConfig({ showUserHost: checked })}
+                      disabled={isOmpTheme}
                     />
                   </div>
 
@@ -330,6 +425,7 @@ export function TerminalConfigSection() {
                     <Switch
                       checked={terminalConfig.showPath}
                       onCheckedChange={(checked) => handleUpdateConfig({ showPath: checked })}
+                      disabled={isOmpTheme}
                     />
                   </div>
 
@@ -341,6 +437,7 @@ export function TerminalConfigSection() {
                     <Switch
                       checked={terminalConfig.showTime}
                       onCheckedChange={(checked) => handleUpdateConfig({ showTime: checked })}
+                      disabled={isOmpTheme}
                     />
                   </div>
 
@@ -352,6 +449,7 @@ export function TerminalConfigSection() {
                     <Switch
                       checked={terminalConfig.showExitStatus}
                       onCheckedChange={(checked) => handleUpdateConfig({ showExitStatus: checked })}
+                      disabled={isOmpTheme}
                     />
                   </div>
 
@@ -363,7 +461,7 @@ export function TerminalConfigSection() {
                         onValueChange={(value: 'full' | 'short' | 'basename') =>
                           handleUpdateConfig({ pathStyle: value })
                         }
-                        disabled={!terminalConfig.showPath}
+                        disabled={!terminalConfig.showPath || isOmpTheme}
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -388,7 +486,7 @@ export function TerminalConfigSection() {
                             pathDepth: clampPathDepth(Number(event.target.value) || 0),
                           })
                         }
-                        disabled={!terminalConfig.showPath}
+                        disabled={!terminalConfig.showPath || isOmpTheme}
                       />
                     </div>
                   </div>
@@ -408,6 +506,8 @@ export function TerminalConfigSection() {
                     pathDepth={terminalConfig.pathDepth}
                     showTime={terminalConfig.showTime}
                     showExitStatus={terminalConfig.showExitStatus}
+                    isOmpTheme={isOmpTheme}
+                    promptThemeLabel={promptThemePreset?.label}
                   />
                 </div>
               </>

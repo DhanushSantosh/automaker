@@ -47,6 +47,9 @@ const DEFAULT_CUSTOM_PROMPT = true;
 const DEFAULT_PROMPT_FORMAT: TerminalConfig['promptFormat'] = 'standard';
 const DEFAULT_SHOW_GIT_BRANCH = true;
 const DEFAULT_SHOW_GIT_STATUS = true;
+const PROMPT_THEME_CUSTOM = 'custom';
+const PROMPT_THEME_PREFIX = 'omp-';
+const OMP_THEME_ENV_VAR = 'AUTOMAKER_OMP_THEME';
 
 // Maximum scrollback buffer size (characters)
 const MAX_SCROLLBACK_SIZE = 50000; // ~50KB per terminal
@@ -98,6 +101,16 @@ function normalizePathDepth(pathDepth: number | undefined): number {
   const depth =
     typeof pathDepth === 'number' && Number.isFinite(pathDepth) ? pathDepth : DEFAULT_PATH_DEPTH;
   return Math.max(DEFAULT_PATH_DEPTH, Math.floor(depth));
+}
+
+function resolveOmpThemeName(promptTheme: string | undefined): string | null {
+  if (!promptTheme || promptTheme === PROMPT_THEME_CUSTOM) {
+    return null;
+  }
+  if (promptTheme.startsWith(PROMPT_THEME_PREFIX)) {
+    return promptTheme.slice(PROMPT_THEME_PREFIX.length);
+  }
+  return null;
 }
 
 export interface TerminalSession {
@@ -429,6 +442,9 @@ export class TerminalService extends EventEmitter {
           const currentTheme = globalSettings?.theme || 'dark';
           const themeColors = getTerminalThemeColors(currentTheme);
           const allThemes = getAllTerminalThemes();
+          const promptTheme =
+            projectTerminalConfig?.promptTheme || globalTerminalConfig.promptTheme;
+          const ompThemeName = resolveOmpThemeName(promptTheme);
 
           // Full config object (global + project overrides)
           const effectiveConfig: TerminalConfig = {
@@ -463,6 +479,9 @@ export class TerminalService extends EventEmitter {
 
           // Set shell-specific env vars
           const shellName = path.basename(shell).toLowerCase();
+          if (ompThemeName && effectiveConfig.customPrompt) {
+            terminalConfigEnv[OMP_THEME_ENV_VAR] = ompThemeName;
+          }
 
           if (shellName.includes(SHELL_NAME_BASH)) {
             const bashRcFilePath = getRcFilePath(options.cwd || cwd, SHELL_NAME_BASH);

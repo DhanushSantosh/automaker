@@ -18,6 +18,8 @@ interface PromptPreviewProps {
   pathDepth: number;
   showTime: boolean;
   showExitStatus: boolean;
+  isOmpTheme?: boolean;
+  promptThemeLabel?: string;
   className?: string;
 }
 
@@ -32,6 +34,8 @@ export function PromptPreview({
   pathDepth,
   showTime,
   showExitStatus,
+  isOmpTheme = false,
+  promptThemeLabel,
   className,
 }: PromptPreviewProps) {
   const terminalTheme = getTerminalTheme(theme);
@@ -76,6 +80,22 @@ export function PromptPreview({
 
   // Generate preview text based on format
   const renderPrompt = () => {
+    if (isOmpTheme) {
+      return (
+        <div className="font-mono text-sm leading-relaxed space-y-2">
+          <div style={{ color: terminalTheme.magenta }}>
+            {promptThemeLabel ?? 'Oh My Posh theme'}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Rendered by the oh-my-posh CLI in the terminal.
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Preview here stays generic to avoid misleading output.
+          </div>
+        </div>
+      );
+    }
+
     const user = 'user';
     const host = 'automaker';
     const path = formatPath('~/projects/automaker');
@@ -156,7 +176,13 @@ export function PromptPreview({
             </span>
           );
         }
-        const powerlineLine = [...powerlineCore, ...powerlineExtras].filter(Boolean);
+        const powerlineLine: ReactNode[] = [...powerlineCore];
+        if (powerlineExtras.length > 0) {
+          if (powerlineLine.length > 0) {
+            powerlineLine.push(' ');
+          }
+          powerlineLine.push(...powerlineExtras);
+        }
 
         return (
           <div className="font-mono text-sm leading-relaxed space-y-1">

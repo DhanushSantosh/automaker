@@ -73,6 +73,10 @@ const STARTUP_COLOR_SECONDARY = 39;
 const STARTUP_COLOR_ACCENT = 33;
 const DEFAULT_PATH_DEPTH = 0;
 const DEFAULT_PATH_STYLE: TerminalConfig['pathStyle'] = 'full';
+const OMP_THEME_ENV_VAR = 'AUTOMAKER_OMP_THEME';
+const OMP_BINARY = 'oh-my-posh';
+const OMP_SHELL_BASH = 'bash';
+const OMP_SHELL_ZSH = 'zsh';
 
 /**
  * Convert hex color to RGB
@@ -188,6 +192,24 @@ function normalizePathDepth(pathDepth: number | undefined): number {
   return Math.max(DEFAULT_PATH_DEPTH, Math.floor(depth));
 }
 
+function generateOhMyPoshInit(
+  shell: typeof OMP_SHELL_BASH | typeof OMP_SHELL_ZSH,
+  fallback: string
+) {
+  const themeVar = `$${OMP_THEME_ENV_VAR}`;
+  const initCommand = `${OMP_BINARY} init ${shell} --config`;
+  return `if [ -n "${themeVar}" ] && command -v ${OMP_BINARY} >/dev/null 2>&1; then
+    automaker_omp_theme="$(automaker_resolve_omp_theme)"
+    if [ -n "$automaker_omp_theme" ]; then
+        eval "$(${initCommand} \\\"$automaker_omp_theme\\\")"
+    else
+        ${fallback}
+    fi
+else
+    ${fallback}
+fi`;
+}
+
 /**
  * Generate common shell functions (git prompt, etc.)
  */
@@ -247,6 +269,34 @@ AUTOMAKER_SHOW_USER_HOST="${config.showUserHost === false ? 'false' : 'true'}"
 AUTOMAKER_SHOW_PATH="${config.showPath === false ? 'false' : 'true'}"
 AUTOMAKER_PATH_STYLE="${normalizePathStyle(config.pathStyle)}"
 AUTOMAKER_PATH_DEPTH=${normalizePathDepth(config.pathDepth)}
+POSH_THEMES_PATH="\${POSH_THEMES_PATH:-\${XDG_DATA_HOME:-\$HOME/.local/share}/oh-my-posh/themes}"
+export POSH_THEMES_PATH
+
+automaker_resolve_omp_theme() {
+  automaker_theme_name="$AUTOMAKER_OMP_THEME"
+  if [ -z "$automaker_theme_name" ]; then
+    return 1
+  fi
+
+  if [ -f "$automaker_theme_name" ]; then
+    printf '%s' "$automaker_theme_name"
+    return 0
+  fi
+
+  automaker_themes_base="\${POSH_THEMES_PATH%/}"
+  if [ -n "$automaker_themes_base" ]; then
+    if [ -f "$automaker_themes_base/$automaker_theme_name.omp.json" ]; then
+      printf '%s' "$automaker_themes_base/$automaker_theme_name.omp.json"
+      return 0
+    fi
+    if [ -f "$automaker_themes_base/$automaker_theme_name.omp.yaml" ]; then
+      printf '%s' "$automaker_themes_base/$automaker_theme_name.omp.yaml"
+      return 0
+    fi
+  fi
+
+  return 1
+}
 
 automaker_command_exists() {
   command -v "$1" >/dev/null 2>&1
@@ -782,6 +832,7 @@ ${validEnvVars}
 export function generateBashrc(theme: TerminalTheme, config: TerminalConfig): string {
   const colors = getThemeANSIColors(theme);
   const promptLine = generatePrompt(config.promptFormat, colors, config);
+  const promptInitializer = generateOhMyPoshInit(OMP_SHELL_BASH, promptLine);
 
   return `#!/bin/bash
 # Automaker Terminal Configuration v1.0
@@ -810,7 +861,7 @@ fi
 
 # Set custom prompt (only if enabled)
 if [ "$AUTOMAKER_CUSTOM_PROMPT" = "true" ]; then
-    ${promptLine}
+    ${promptInitializer}
 fi
 ${generateAliases(config)}${generateEnvVars(config)}
 # Load user customizations (if exists)
@@ -826,6 +877,7 @@ fi
 export function generateZshrc(theme: TerminalTheme, config: TerminalConfig): string {
   const colors = getThemeANSIColors(theme);
   const promptLine = generateZshPrompt(config.promptFormat, colors, config);
+  const promptInitializer = generateOhMyPoshInit(OMP_SHELL_ZSH, promptLine);
 
   return `#!/bin/zsh
 # Automaker Terminal Configuration v1.0
@@ -854,7 +906,7 @@ fi
 
 # Set custom prompt (only if enabled)
 if [ "$AUTOMAKER_CUSTOM_PROMPT" = "true" ]; then
-    ${promptLine}
+    ${promptInitializer}
 fi
 ${generateAliases(config)}${generateEnvVars(config)}
 # Load user customizations (if exists)

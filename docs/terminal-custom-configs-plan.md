@@ -147,7 +147,7 @@ export async function needsRegeneration(
 - Create `.automaker/terminal/` if doesn't exist
 - Write RC files with 0644 permissions
 - Write theme color files (40 themes × 1 file each)
-- Create version.txt with format version (currently "5")
+- Create version.txt with format version (currently "8")
 - Support atomic writes (write to temp, then rename)
 
 ### Step 3: Add Settings Schema
@@ -168,11 +168,32 @@ terminalConfig?: {
   /** Prompt format template */
   promptFormat: 'standard' | 'minimal' | 'powerline' | 'starship';
 
+  /** Prompt theme preset */
+  promptTheme?: TerminalPromptTheme;
+
   /** Show git branch in prompt (default: true) */
   showGitBranch: boolean;
 
   /** Show git status dirty indicator (default: true) */
   showGitStatus: boolean;
+
+  /** Show user and host in prompt (default: true) */
+  showUserHost: boolean;
+
+  /** Show path in prompt (default: true) */
+  showPath: boolean;
+
+  /** Path display style */
+  pathStyle: 'full' | 'short' | 'basename';
+
+  /** Limit path depth (0 = full path) */
+  pathDepth: number;
+
+  /** Show current time in prompt (default: false) */
+  showTime: boolean;
+
+  /** Show last command exit status when non-zero (default: false) */
+  showExitStatus: boolean;
 
   /** User-provided custom aliases (multiline string) */
   customAliases: string;
@@ -193,6 +214,27 @@ terminalConfig?: {
   /** Override global enabled setting */
   enabled?: boolean;
 
+  /** Override prompt theme preset */
+  promptTheme?: TerminalPromptTheme;
+
+  /** Override showing user/host */
+  showUserHost?: boolean;
+
+  /** Override showing path */
+  showPath?: boolean;
+
+  /** Override path style */
+  pathStyle?: 'full' | 'short' | 'basename';
+
+  /** Override path depth (0 = full path) */
+  pathDepth?: number;
+
+  /** Override showing time */
+  showTime?: boolean;
+
+  /** Override showing exit status */
+  showExitStatus?: boolean;
+
   /** Project-specific custom aliases */
   customAliases?: string;
 
@@ -211,13 +253,27 @@ const DEFAULT_TERMINAL_CONFIG = {
   enabled: false,
   customPrompt: true,
   promptFormat: 'standard' as const,
+  promptTheme: 'custom' as const,
   showGitBranch: true,
   showGitStatus: true,
+  showUserHost: true,
+  showPath: true,
+  pathStyle: 'full' as const,
+  pathDepth: 0,
+  showTime: false,
+  showExitStatus: false,
   customAliases: '',
   customEnvVars: {},
   rcFileVersion: 1,
 };
 ```
+
+**Oh My Posh Themes**:
+
+- When `promptTheme` starts with `omp-` and `oh-my-posh` is available, the generated RC files will
+  initialize oh-my-posh with the selected theme name.
+- If oh-my-posh is not installed, the prompt falls back to the Automaker-built prompt format.
+- `POSH_THEMES_PATH` is exported to the standard user themes directory so themes resolve offline.
 
 ### Step 4: Modify Terminal Service
 
