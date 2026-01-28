@@ -24,6 +24,7 @@ import { TERMINAL_FONT_OPTIONS } from '@/config/terminal-themes';
 import { DEFAULT_FONT_VALUE } from '@/config/ui-font-options';
 import { useAvailableTerminals } from '@/components/views/board-view/worktree-panel/hooks/use-available-terminals';
 import { getTerminalIcon } from '@/components/icons/terminal-icons';
+import { TerminalConfigSection } from './terminal-config-section';
 
 export function TerminalSection() {
   const {
@@ -299,6 +300,11 @@ export function TerminalSection() {
             }}
           />
         </div>
+      </div>
+
+      {/* Custom Terminal Configurations */}
+      <div className="mt-6">
+        <TerminalConfigSection />
       </div>
     </div>
   );
