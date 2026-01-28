@@ -157,6 +157,10 @@ function isValidEnvVarName(name: string): boolean {
   return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
 }
 
+function stripPromptEscapes(ansiColor: string): string {
+  return ansiColor.replace(/\\\[/g, '').replace(/\\\]/g, '');
+}
+
 /**
  * Generate common shell functions (git prompt, etc.)
  */
@@ -200,6 +204,189 @@ automaker_git_prompt() {
 # Automaker Terminal Configuration - Common Functions v1.0
 
 ${gitPrompt}
+
+AUTOMAKER_INFO_UNKNOWN="Unknown"
+AUTOMAKER_BANNER_LABEL_WIDTH=12
+AUTOMAKER_BYTES_PER_KIB=1024
+AUTOMAKER_KIB_PER_MIB=1024
+AUTOMAKER_MIB_PER_GIB=1024
+
+automaker_command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+automaker_get_os() {
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    if [ -n "$PRETTY_NAME" ]; then
+      echo "$PRETTY_NAME"
+      return
+    fi
+    if [ -n "$NAME" ] && [ -n "$VERSION" ]; then
+      echo "$NAME $VERSION"
+      return
+    fi
+  fi
+
+  if automaker_command_exists sw_vers; then
+    echo "$(sw_vers -productName) $(sw_vers -productVersion)"
+    return
+  fi
+
+  uname -s 2>/dev/null || echo "$AUTOMAKER_INFO_UNKNOWN"
+}
+
+automaker_get_uptime() {
+  if automaker_command_exists uptime; then
+    if uptime -p >/dev/null 2>&1; then
+      uptime -p
+      return
+    fi
+    uptime 2>/dev/null | sed 's/.*up \\([^,]*\\).*/\\1/' || uptime 2>/dev/null
+    return
+  fi
+
+  echo "$AUTOMAKER_INFO_UNKNOWN"
+}
+
+automaker_get_cpu() {
+  if automaker_command_exists lscpu; then
+    lscpu | sed -n 's/Model name:[[:space:]]*//p' | head -n 1
+    return
+  fi
+
+  if automaker_command_exists sysctl; then
+    sysctl -n machdep.cpu.brand_string 2>/dev/null || sysctl -n hw.model 2>/dev/null
+    return
+  fi
+
+  uname -m 2>/dev/null || echo "$AUTOMAKER_INFO_UNKNOWN"
+}
+
+automaker_get_memory() {
+  if automaker_command_exists free; then
+    free -h | awk '/Mem:/ {print $3 " / " $2}'
+    return
+  fi
+
+  if automaker_command_exists vm_stat; then
+    local page_size
+    local pages_free
+    local pages_active
+    local pages_inactive
+    local pages_wired
+    local pages_total
+    page_size=$(vm_stat | awk '/page size of/ {print $8}')
+    pages_free=$(vm_stat | awk '/Pages free/ {print $3}' | tr -d '.')
+    pages_active=$(vm_stat | awk '/Pages active/ {print $3}' | tr -d '.')
+    pages_inactive=$(vm_stat | awk '/Pages inactive/ {print $3}' | tr -d '.')
+    pages_wired=$(vm_stat | awk '/Pages wired down/ {print $4}' | tr -d '.')
+    pages_total=$((pages_free + pages_active + pages_inactive + pages_wired))
+    awk -v total="$pages_total" -v free="$pages_free" -v size="$page_size" \
+      -v bytes_kib="$AUTOMAKER_BYTES_PER_KIB" \
+      -v kib_mib="$AUTOMAKER_KIB_PER_MIB" \
+      -v mib_gib="$AUTOMAKER_MIB_PER_GIB" \
+      'BEGIN {
+      total_gb = total * size / bytes_kib / kib_mib / mib_gib;
+      used_gb = (total - free) * size / bytes_kib / kib_mib / mib_gib;
+      printf("%.1f GB / %.1f GB", used_gb, total_gb);
+    }'
+    return
+  fi
+
+  if automaker_command_exists sysctl; then
+    local total_bytes
+    total_bytes=$(sysctl -n hw.memsize 2>/dev/null)
+    if [ -n "$total_bytes" ]; then
+      awk -v total="$total_bytes" \
+        -v bytes_kib="$AUTOMAKER_BYTES_PER_KIB" \
+        -v kib_mib="$AUTOMAKER_KIB_PER_MIB" \
+        -v mib_gib="$AUTOMAKER_MIB_PER_GIB" \
+        'BEGIN {printf("%.1f GB", total / bytes_kib / kib_mib / mib_gib)}'
+      return
+    fi
+  fi
+
+  echo "$AUTOMAKER_INFO_UNKNOWN"
+}
+
+automaker_get_disk() {
+  if automaker_command_exists df; then
+    df -h / 2>/dev/null | awk 'NR==2 {print $3 " / " $2}'
+    return
+  fi
+
+  echo "$AUTOMAKER_INFO_UNKNOWN"
+}
+
+automaker_get_ip() {
+  if automaker_command_exists hostname; then
+    local ip_addr
+    ip_addr=$(hostname -I 2>/dev/null | awk '{print $1}')
+    if [ -n "$ip_addr" ]; then
+      echo "$ip_addr"
+      return
+    fi
+  fi
+
+  if automaker_command_exists ipconfig; then
+    local ip_addr
+    ip_addr=$(ipconfig getifaddr en0 2>/dev/null)
+    if [ -n "$ip_addr" ]; then
+      echo "$ip_addr"
+      return
+    fi
+  fi
+
+  echo "$AUTOMAKER_INFO_UNKNOWN"
+}
+
+automaker_show_banner() {
+  local label_width="$AUTOMAKER_BANNER_LABEL_WIDTH"
+  local logo_line_1="  █▀▀█ █  █ ▀▀█▀▀ █▀▀█ █▀▄▀█ █▀▀█ █ █ █▀▀ █▀▀█  "
+  local logo_line_2="  █▄▄█ █  █   █   █  █ █ ▀ █ █▄▄█ █▀▄ █▀▀ █▄▄▀  "
+  local logo_line_3="  ▀  ▀  ▀▀▀   ▀   ▀▀▀▀ ▀   ▀ ▀  ▀ ▀ ▀ ▀▀▀ ▀ ▀▀  "
+  local accent_color="\${COLOR_PROMPT_RAW:-}"
+  local secondary_color="\${COLOR_PATH_RAW:-}"
+  local label_color="\${COLOR_GIT_BRANCH_RAW:-}"
+  local reset_color="\${COLOR_RESET_RAW:-}"
+
+  printf "%b%s%b\n" "$accent_color" "$logo_line_1" "$reset_color"
+  printf "%b%s%b\n" "$secondary_color" "$logo_line_2" "$reset_color"
+  printf "%b%s%b\n" "$secondary_color" "$logo_line_3" "$reset_color"
+  printf "\n"
+
+  local shell_name="\${SHELL##*/}"
+  if [ -z "$shell_name" ]; then
+    shell_name=$(basename "$0" 2>/dev/null || echo "shell")
+  fi
+  local user_host="\${USER:-unknown}@$(hostname 2>/dev/null || echo unknown)"
+  printf "%b%s%b\n" "$label_color" "$user_host" "$reset_color"
+
+  printf "%b%-\${label_width}s%b %s\n" "$label_color" "OS:" "$reset_color" "$(automaker_get_os)"
+  printf "%b%-\${label_width}s%b %s\n" "$label_color" "Uptime:" "$reset_color" "$(automaker_get_uptime)"
+  printf "%b%-\${label_width}s%b %s\n" "$label_color" "Shell:" "$reset_color" "$shell_name"
+  printf "%b%-\${label_width}s%b %s\n" "$label_color" "Terminal:" "$reset_color" "\${TERM_PROGRAM:-$TERM}"
+  printf "%b%-\${label_width}s%b %s\n" "$label_color" "CPU:" "$reset_color" "$(automaker_get_cpu)"
+  printf "%b%-\${label_width}s%b %s\n" "$label_color" "Memory:" "$reset_color" "$(automaker_get_memory)"
+  printf "%b%-\${label_width}s%b %s\n" "$label_color" "Disk:" "$reset_color" "$(automaker_get_disk)"
+  printf "%b%-\${label_width}s%b %s\n" "$label_color" "Local IP:" "$reset_color" "$(automaker_get_ip)"
+  printf "\n"
+}
+
+automaker_show_banner_once() {
+  case "$-" in
+    *i*) ;;
+    *) return ;;
+  esac
+
+  if [ "$AUTOMAKER_BANNER_SHOWN" = "true" ]; then
+    return
+  fi
+
+  automaker_show_banner
+  export AUTOMAKER_BANNER_SHOWN="true"
+}
 `;
 }
 
@@ -340,6 +527,11 @@ if [ -f "\${BASH_SOURCE%/*}/common.sh" ]; then
     source "\${BASH_SOURCE%/*}/common.sh"
 fi
 
+# Show Automaker banner on shell start
+if command -v automaker_show_banner_once >/dev/null 2>&1; then
+    automaker_show_banner_once
+fi
+
 # Set custom prompt (only if enabled)
 if [ "$AUTOMAKER_CUSTOM_PROMPT" = "true" ]; then
     ${promptLine}
@@ -379,6 +571,11 @@ if [ -f "\${ZDOTDIR:-\${0:a:h}}/common.sh" ]; then
     source "\${ZDOTDIR:-\${0:a:h}}/common.sh"
 fi
 
+# Show Automaker banner on shell start
+if command -v automaker_show_banner_once >/dev/null 2>&1; then
+    automaker_show_banner_once
+fi
+
 # Set custom prompt (only if enabled)
 if [ "$AUTOMAKER_CUSTOM_PROMPT" = "true" ]; then
     ${promptLine}
@@ -396,6 +593,15 @@ fi
  */
 export function generateThemeColors(theme: TerminalTheme): string {
   const colors = getThemeANSIColors(theme);
+  const rawColors = {
+    user: stripPromptEscapes(colors.user),
+    host: stripPromptEscapes(colors.host),
+    path: stripPromptEscapes(colors.path),
+    gitBranch: stripPromptEscapes(colors.gitBranch),
+    gitDirty: stripPromptEscapes(colors.gitDirty),
+    prompt: stripPromptEscapes(colors.prompt),
+    reset: stripPromptEscapes(colors.reset),
+  };
 
   return `#!/bin/sh
 # Automaker Theme Colors
@@ -409,6 +615,15 @@ export COLOR_GIT_BRANCH="${colors.gitBranch}"
 export COLOR_GIT_DIRTY="${colors.gitDirty}"
 export COLOR_PROMPT="${colors.prompt}"
 export COLOR_RESET="${colors.reset}"
+
+# ANSI color codes for banner output (no prompt escapes)
+export COLOR_USER_RAW="${rawColors.user}"
+export COLOR_HOST_RAW="${rawColors.host}"
+export COLOR_PATH_RAW="${rawColors.path}"
+export COLOR_GIT_BRANCH_RAW="${rawColors.gitBranch}"
+export COLOR_GIT_DIRTY_RAW="${rawColors.gitDirty}"
+export COLOR_PROMPT_RAW="${rawColors.prompt}"
+export COLOR_RESET_RAW="${rawColors.reset}"
 `;
 }
 

@@ -135,7 +135,11 @@ export async function writeRcFiles(
 ): Promise<void>;
 export function getRcFilePath(projectPath: string, shell: 'bash' | 'zsh' | 'sh'): string;
 export async function checkRcFileVersion(projectPath: string): Promise<number | null>;
-export async function needsRegeneration(projectPath: string, theme: ThemeMode): Promise<boolean>;
+export async function needsRegeneration(
+  projectPath: string,
+  theme: ThemeMode,
+  config: TerminalConfig
+): Promise<boolean>;
 ```
 
 **File Operations**:
@@ -143,7 +147,7 @@ export async function needsRegeneration(projectPath: string, theme: ThemeMode): 
 - Create `.automaker/terminal/` if doesn't exist
 - Write RC files with 0644 permissions
 - Write theme color files (40 themes × 1 file each)
-- Create version.txt with format version (currently "1")
+- Create version.txt with format version (currently "2")
 - Support atomic writes (write to temp, then rename)
 
 ### Step 3: Add Settings Schema
