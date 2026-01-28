@@ -346,14 +346,15 @@ automaker_show_banner() {
   local logo_line_1="  █▀▀█ █  █ ▀▀█▀▀ █▀▀█ █▀▄▀█ █▀▀█ █ █ █▀▀ █▀▀█  "
   local logo_line_2="  █▄▄█ █  █   █   █  █ █ ▀ █ █▄▄█ █▀▄ █▀▀ █▄▄▀  "
   local logo_line_3="  ▀  ▀  ▀▀▀   ▀   ▀▀▀▀ ▀   ▀ ▀  ▀ ▀ ▀ ▀▀▀ ▀ ▀▀  "
-  local accent_color="\${COLOR_PROMPT_RAW:-}"
-  local secondary_color="\${COLOR_PATH_RAW:-}"
+  local accent_color="\${COLOR_USER_RAW:-}"
+  local secondary_color="\${COLOR_HOST_RAW:-}"
+  local tertiary_color="\${COLOR_PATH_RAW:-}"
   local label_color="\${COLOR_GIT_BRANCH_RAW:-}"
   local reset_color="\${COLOR_RESET_RAW:-}"
 
   printf "%b%s%b\n" "$accent_color" "$logo_line_1" "$reset_color"
   printf "%b%s%b\n" "$secondary_color" "$logo_line_2" "$reset_color"
-  printf "%b%s%b\n" "$secondary_color" "$logo_line_3" "$reset_color"
+  printf "%b%s%b\n" "$tertiary_color" "$logo_line_3" "$reset_color"
   printf "\n"
 
   local shell_name="\${SHELL##*/}"
