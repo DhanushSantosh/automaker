@@ -269,7 +269,10 @@ AUTOMAKER_SHOW_USER_HOST="${config.showUserHost === false ? 'false' : 'true'}"
 AUTOMAKER_SHOW_PATH="${config.showPath === false ? 'false' : 'true'}"
 AUTOMAKER_PATH_STYLE="${normalizePathStyle(config.pathStyle)}"
 AUTOMAKER_PATH_DEPTH=${normalizePathDepth(config.pathDepth)}
-POSH_THEMES_PATH="\${POSH_THEMES_PATH:-\${XDG_DATA_HOME:-\$HOME/.local/share}/oh-my-posh/themes}"
+automaker_default_themes_dir="\${XDG_DATA_HOME:-\$HOME/.local/share}/oh-my-posh/themes"
+if [ -z "$POSH_THEMES_PATH" ] || [ ! -d "$POSH_THEMES_PATH" ]; then
+  POSH_THEMES_PATH="$automaker_default_themes_dir"
+fi
 export POSH_THEMES_PATH
 
 automaker_resolve_omp_theme() {
