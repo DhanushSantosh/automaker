@@ -62,6 +62,10 @@ export interface ANSIColors {
   reset: string;
 }
 
+const STARTUP_COLOR_PRIMARY = 51;
+const STARTUP_COLOR_SECONDARY = 39;
+const STARTUP_COLOR_ACCENT = 33;
+
 /**
  * Convert hex color to RGB
  */
@@ -210,6 +214,10 @@ AUTOMAKER_BANNER_LABEL_WIDTH=12
 AUTOMAKER_BYTES_PER_KIB=1024
 AUTOMAKER_KIB_PER_MIB=1024
 AUTOMAKER_MIB_PER_GIB=1024
+AUTOMAKER_COLOR_PRIMARY="\\033[38;5;${STARTUP_COLOR_PRIMARY}m"
+AUTOMAKER_COLOR_SECONDARY="\\033[38;5;${STARTUP_COLOR_SECONDARY}m"
+AUTOMAKER_COLOR_ACCENT="\\033[38;5;${STARTUP_COLOR_ACCENT}m"
+AUTOMAKER_COLOR_RESET="\\033[0m"
 
 automaker_command_exists() {
   command -v "$1" >/dev/null 2>&1
@@ -346,11 +354,11 @@ automaker_show_banner() {
   local logo_line_1="  █▀▀█ █  █ ▀▀█▀▀ █▀▀█ █▀▄▀█ █▀▀█ █ █ █▀▀ █▀▀█  "
   local logo_line_2="  █▄▄█ █  █   █   █  █ █ ▀ █ █▄▄█ █▀▄ █▀▀ █▄▄▀  "
   local logo_line_3="  ▀  ▀  ▀▀▀   ▀   ▀▀▀▀ ▀   ▀ ▀  ▀ ▀ ▀ ▀▀▀ ▀ ▀▀  "
-  local accent_color="\${COLOR_USER_RAW:-}"
-  local secondary_color="\${COLOR_HOST_RAW:-}"
-  local tertiary_color="\${COLOR_PATH_RAW:-}"
-  local label_color="\${COLOR_GIT_BRANCH_RAW:-}"
-  local reset_color="\${COLOR_RESET_RAW:-}"
+  local accent_color="\${AUTOMAKER_COLOR_PRIMARY}"
+  local secondary_color="\${AUTOMAKER_COLOR_SECONDARY}"
+  local tertiary_color="\${AUTOMAKER_COLOR_ACCENT}"
+  local label_color="\${AUTOMAKER_COLOR_SECONDARY}"
+  local reset_color="\${AUTOMAKER_COLOR_RESET}"
 
   printf "%b%s%b\n" "$accent_color" "$logo_line_1" "$reset_color"
   printf "%b%s%b\n" "$secondary_color" "$logo_line_2" "$reset_color"

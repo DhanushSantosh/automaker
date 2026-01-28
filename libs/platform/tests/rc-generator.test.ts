@@ -13,6 +13,9 @@ describe('rc-generator.ts', () => {
   const RAW_COLOR_PREFIX = 'export COLOR_USER_RAW=';
   const RAW_COLOR_ESCAPE_START = '\\\\[';
   const RAW_COLOR_ESCAPE_END = '\\\\]';
+  const STARTUP_PRIMARY_COLOR = '38;5;51m';
+  const STARTUP_SECONDARY_COLOR = '38;5;39m';
+  const STARTUP_ACCENT_COLOR = '38;5;33m';
 
   const baseConfig: TerminalConfig = {
     enabled: true,
@@ -28,6 +31,9 @@ describe('rc-generator.ts', () => {
     const output = generateCommonFunctions(baseConfig);
 
     expect(output).toContain(EXPECTED_BANNER_FUNCTION);
+    expect(output).toContain(STARTUP_PRIMARY_COLOR);
+    expect(output).toContain(STARTUP_SECONDARY_COLOR);
+    expect(output).toContain(STARTUP_ACCENT_COLOR);
   });
 
   it('exports raw banner colors without prompt escape wrappers', () => {

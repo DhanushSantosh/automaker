@@ -21,7 +21,7 @@ import {
 /**
  * Current RC file format version
  */
-export const RC_FILE_VERSION = 3;
+export const RC_FILE_VERSION = 4;
 
 const RC_SIGNATURE_FILENAME = 'config.sha256';
 
