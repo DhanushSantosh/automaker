@@ -13,6 +13,14 @@ import * as path from 'path';
 // to enforce ALLOWED_ROOT_DIRECTORY security boundary
 import * as secureFs from '../lib/secure-fs.js';
 import { createLogger } from '@automaker/utils';
+import type { SettingsService } from './settings-service.js';
+import { getTerminalThemeColors, getAllTerminalThemes } from '../lib/terminal-themes-data.js';
+import {
+  getRcFilePath,
+  getTerminalDir,
+  ensureRcFilesUpToDate,
+  type TerminalConfig,
+} from '@automaker/platform';
 
 const logger = createLogger('Terminal');
 // System paths module handles shell binary checks and WSL detection
@@ -77,6 +85,12 @@ export class TerminalService extends EventEmitter {
     !!(process.versions && (process.versions as Record<string, string>).electron) ||
     !!process.env.ELECTRON_RUN_AS_NODE;
   private useConptyFallback = false; // Track if we need to use winpty fallback on Windows
+  private settingsService: SettingsService | null = null;
+
+  constructor(settingsService?: SettingsService) {
+    super();
+    this.settingsService = settingsService || null;
+  }
 
   /**
    * Kill a PTY process with platform-specific handling.
@@ -332,6 +346,90 @@ export class TerminalService extends EventEmitter {
       }
     }
 
+    // Terminal config injection (custom prompts, themes)
+    const terminalConfigEnv: Record<string, string> = {};
+    if (this.settingsService) {
+      try {
+        const globalSettings = await this.settingsService.getGlobalSettings();
+        const projectSettings = options.cwd
+          ? await this.settingsService.getProjectSettings(options.cwd)
+          : null;
+
+        // Merge global and project terminal configs
+        const globalTerminalConfig = globalSettings?.terminalConfig;
+        const projectTerminalConfig = projectSettings?.terminalConfig;
+
+        // Determine if terminal config is enabled
+        const enabled =
+          projectTerminalConfig?.enabled !== undefined
+            ? projectTerminalConfig.enabled
+            : globalTerminalConfig?.enabled || false;
+
+        if (enabled && globalTerminalConfig) {
+          const currentTheme = globalSettings?.theme || 'dark';
+          const themeColors = getTerminalThemeColors(currentTheme);
+          const allThemes = getAllTerminalThemes();
+
+          // Full config object (global + project overrides)
+          const effectiveConfig: TerminalConfig = {
+            enabled: true,
+            customPrompt: globalTerminalConfig.customPrompt,
+            promptFormat: globalTerminalConfig.promptFormat,
+            showGitBranch: globalTerminalConfig.showGitBranch,
+            showGitStatus: globalTerminalConfig.showGitStatus,
+            customAliases:
+              projectTerminalConfig?.customAliases || globalTerminalConfig.customAliases,
+            customEnvVars: {
+              ...globalTerminalConfig.customEnvVars,
+              ...projectTerminalConfig?.customEnvVars,
+            },
+            rcFileVersion: globalTerminalConfig.rcFileVersion,
+          };
+
+          // Ensure RC files are up to date
+          await ensureRcFilesUpToDate(
+            options.cwd || cwd,
+            currentTheme,
+            effectiveConfig,
+            themeColors,
+            allThemes
+          );
+
+          // Set shell-specific env vars
+          const shellName = path.basename(shell).toLowerCase();
+
+          if (shellName.includes('bash')) {
+            terminalConfigEnv.BASH_ENV = getRcFilePath(options.cwd || cwd, 'bash');
+            terminalConfigEnv.AUTOMAKER_CUSTOM_PROMPT = effectiveConfig.customPrompt
+              ? 'true'
+              : 'false';
+            terminalConfigEnv.AUTOMAKER_THEME = currentTheme;
+          } else if (shellName.includes('zsh')) {
+            terminalConfigEnv.ZDOTDIR = getTerminalDir(options.cwd || cwd);
+            terminalConfigEnv.AUTOMAKER_CUSTOM_PROMPT = effectiveConfig.customPrompt
+              ? 'true'
+              : 'false';
+            terminalConfigEnv.AUTOMAKER_THEME = currentTheme;
+          } else if (shellName === 'sh') {
+            terminalConfigEnv.ENV = getRcFilePath(options.cwd || cwd, 'sh');
+            terminalConfigEnv.AUTOMAKER_CUSTOM_PROMPT = effectiveConfig.customPrompt
+              ? 'true'
+              : 'false';
+            terminalConfigEnv.AUTOMAKER_THEME = currentTheme;
+          }
+
+          // Add custom env vars from config
+          Object.assign(terminalConfigEnv, effectiveConfig.customEnvVars);
+
+          logger.info(
+            `[createSession] Terminal config enabled for session ${id}, shell: ${shellName}`
+          );
+        }
+      } catch (error) {
+        logger.warn(`[createSession] Failed to apply terminal config: ${error}`);
+      }
+    }
+
     const env: Record<string, string> = {
       ...cleanEnv,
       TERM: 'xterm-256color',
@@ -341,6 +439,7 @@ export class TerminalService extends EventEmitter {
       LANG: process.env.LANG || 'en_US.UTF-8',
       LC_ALL: process.env.LC_ALL || process.env.LANG || 'en_US.UTF-8',
       ...options.env,
+      ...terminalConfigEnv, // Apply terminal config env vars last (highest priority)
     };
 
     logger.info(`Creating session ${id} with shell: ${shell} in ${cwd}`);
@@ -653,6 +752,52 @@ export class TerminalService extends EventEmitter {
   }
 
   /**
+   * Handle theme change - regenerate RC files with new theme colors
+   */
+  async onThemeChange(projectPath: string, newTheme: string): Promise<void> {
+    if (!this.settingsService) {
+      logger.warn('[onThemeChange] SettingsService not available');
+      return;
+    }
+
+    try {
+      const globalSettings = await this.settingsService.getGlobalSettings();
+      const terminalConfig = globalSettings?.terminalConfig;
+
+      if (terminalConfig?.enabled) {
+        const themeColors = getTerminalThemeColors(
+          newTheme as import('@automaker/types').ThemeMode
+        );
+        const allThemes = getAllTerminalThemes();
+
+        // Regenerate RC files with new theme
+        const effectiveConfig: TerminalConfig = {
+          enabled: true,
+          customPrompt: terminalConfig.customPrompt,
+          promptFormat: terminalConfig.promptFormat,
+          showGitBranch: terminalConfig.showGitBranch,
+          showGitStatus: terminalConfig.showGitStatus,
+          customAliases: terminalConfig.customAliases,
+          customEnvVars: terminalConfig.customEnvVars,
+          rcFileVersion: terminalConfig.rcFileVersion,
+        };
+
+        await ensureRcFilesUpToDate(
+          projectPath,
+          newTheme as import('@automaker/types').ThemeMode,
+          effectiveConfig,
+          themeColors,
+          allThemes
+        );
+
+        logger.info(`[onThemeChange] Regenerated RC files for theme: ${newTheme}`);
+      }
+    } catch (error) {
+      logger.error(`[onThemeChange] Failed to regenerate RC files: ${error}`);
+    }
+  }
+
+  /**
    * Clean up all sessions
    */
   cleanup(): void {
@@ -676,9 +821,9 @@ export class TerminalService extends EventEmitter {
 // Singleton instance
 let terminalService: TerminalService | null = null;
 
-export function getTerminalService(): TerminalService {
+export function getTerminalService(settingsService?: SettingsService): TerminalService {
   if (!terminalService) {
-    terminalService = new TerminalService();
+    terminalService = new TerminalService(settingsService);
   }
   return terminalService;
 }

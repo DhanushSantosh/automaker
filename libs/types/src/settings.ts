@@ -27,14 +27,16 @@ export type { ModelAlias };
  *
  * Includes system theme and multiple color schemes organized by dark/light:
  * - System: Respects OS dark/light mode preference
- * - Dark themes (16): dark, retro, dracula, nord, monokai, tokyonight, solarized,
- *   gruvbox, catppuccin, onedark, synthwave, red, sunset, gray, forest, ocean
- * - Light themes (16): light, cream, solarizedlight, github, paper, rose, mint,
- *   lavender, sand, sky, peach, snow, sepia, gruvboxlight, nordlight, blossom
+ * - Dark themes (20): dark, retro, dracula, nord, monokai, tokyonight, solarized,
+ *   gruvbox, catppuccin, onedark, synthwave, red, sunset, gray, forest, ocean,
+ *   ember, ayu-dark, ayu-mirage, matcha
+ * - Light themes (20): light, cream, solarizedlight, github, paper, rose, mint,
+ *   lavender, sand, sky, peach, snow, sepia, gruvboxlight, nordlight, blossom,
+ *   ayu-light, onelight, bluloco, feather
  */
 export type ThemeMode =
   | 'system'
-  // Dark themes (16)
+  // Dark themes (20)
   | 'dark'
   | 'retro'
   | 'dracula'
@@ -51,7 +53,11 @@ export type ThemeMode =
   | 'gray'
   | 'forest'
   | 'ocean'
-  // Light themes (16)
+  | 'ember'
+  | 'ayu-dark'
+  | 'ayu-mirage'
+  | 'matcha'
+  // Light themes (20)
   | 'light'
   | 'cream'
   | 'solarizedlight'
@@ -67,7 +73,11 @@ export type ThemeMode =
   | 'sepia'
   | 'gruvboxlight'
   | 'nordlight'
-  | 'blossom';
+  | 'blossom'
+  | 'ayu-light'
+  | 'onelight'
+  | 'bluloco'
+  | 'feather';
 
 /** PlanningMode - Planning levels for feature generation workflows */
 export type PlanningMode = 'skip' | 'lite' | 'spec' | 'full';
@@ -840,6 +850,25 @@ export interface GlobalSettings {
   // Terminal Configuration
   /** How to open terminals from "Open in Terminal" worktree action */
   openTerminalMode?: 'newTab' | 'split';
+  /** Custom terminal configuration settings (prompt theming, aliases, env vars) */
+  terminalConfig?: {
+    /** Enable custom terminal configurations (default: false) */
+    enabled: boolean;
+    /** Enable custom prompt (default: true when enabled) */
+    customPrompt: boolean;
+    /** Prompt format template */
+    promptFormat: 'standard' | 'minimal' | 'powerline' | 'starship';
+    /** Show git branch in prompt (default: true) */
+    showGitBranch: boolean;
+    /** Show git status dirty indicator (default: true) */
+    showGitStatus: boolean;
+    /** User-provided custom aliases (multiline string) */
+    customAliases: string;
+    /** User-provided custom env vars */
+    customEnvVars: Record<string, string>;
+    /** RC file format version (for migration) */
+    rcFileVersion?: number;
+  };
 
   // UI State Preferences
   /** Whether sidebar is currently open */
@@ -1244,6 +1273,19 @@ export interface ProjectSettings {
    * If not specified, falls back to the global defaultFeatureModel setting.
    */
   defaultFeatureModel?: PhaseModelEntry;
+
+  // Terminal Configuration Override (per-project)
+  /** Project-specific terminal config overrides */
+  terminalConfig?: {
+    /** Override global enabled setting */
+    enabled?: boolean;
+    /** Project-specific custom aliases */
+    customAliases?: string;
+    /** Project-specific env vars */
+    customEnvVars?: Record<string, string>;
+    /** Custom welcome message for this project */
+    welcomeMessage?: string;
+  };
 
   // Deprecated Claude API Profile Override
   /**
