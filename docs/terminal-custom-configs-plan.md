@@ -147,7 +147,7 @@ export async function needsRegeneration(
 - Create `.automaker/terminal/` if doesn't exist
 - Write RC files with 0644 permissions
 - Write theme color files (40 themes × 1 file each)
-- Create version.txt with format version (currently "9")
+- Create version.txt with format version (currently "10")
 - Support atomic writes (write to temp, then rename)
 
 ### Step 3: Add Settings Schema

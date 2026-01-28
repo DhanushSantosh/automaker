@@ -201,7 +201,7 @@ function generateOhMyPoshInit(
   return `if [ -n "${themeVar}" ] && command -v ${OMP_BINARY} >/dev/null 2>&1; then
     automaker_omp_theme="$(automaker_resolve_omp_theme)"
     if [ -n "$automaker_omp_theme" ]; then
-        eval "$(${initCommand} \\\"$automaker_omp_theme\\\")"
+        eval "$(${initCommand} "$automaker_omp_theme")"
     else
         ${fallback}
     fi
