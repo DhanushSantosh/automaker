@@ -26,8 +26,11 @@ import { toast } from 'sonner';
 import { PromptPreview } from './prompt-preview';
 import { useUpdateGlobalSettings } from '@/hooks/mutations/use-settings-mutations';
 import { useGlobalSettings } from '@/hooks/queries/use-settings';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 export function TerminalConfigSection() {
+  const PATH_DEPTH_MIN = 0;
+  const PATH_DEPTH_MAX = 10;
   const { theme } = useAppStore();
   const { data: globalSettings } = useGlobalSettings();
   const updateGlobalSettings = useUpdateGlobalSettings({ showSuccessToast: false });
@@ -37,32 +40,37 @@ export function TerminalConfigSection() {
       value,
     }))
   );
+  const [showEnableConfirm, setShowEnableConfirm] = useState(false);
 
-  const terminalConfig = globalSettings?.terminalConfig || {
+  const clampPathDepth = (value: number) =>
+    Math.min(PATH_DEPTH_MAX, Math.max(PATH_DEPTH_MIN, value));
+
+  const defaultTerminalConfig = {
     enabled: false,
     customPrompt: true,
     promptFormat: 'standard' as const,
     showGitBranch: true,
     showGitStatus: true,
+    showUserHost: true,
+    showPath: true,
+    pathStyle: 'full' as const,
+    pathDepth: PATH_DEPTH_MIN,
+    showTime: false,
+    showExitStatus: false,
     customAliases: '',
     customEnvVars: {},
   };
 
-  const handleToggleEnabled = async (enabled: boolean) => {
-    if (enabled) {
-      // Show confirmation when enabling
-      const confirmed = window.confirm(
-        'Enable custom terminal configurations?\n\n' +
-          'This will:\n' +
-          '• Create shell config files in .automaker/terminal/\n' +
-          '• Set custom prompts that match your app theme\n' +
-          '• Not modify your existing ~/.bashrc or ~/.zshrc\n\n' +
-          'New terminals will use the custom prompt. Existing terminals are unaffected.'
-      );
+  const terminalConfig = {
+    ...defaultTerminalConfig,
+    ...globalSettings?.terminalConfig,
+    customAliases:
+      globalSettings?.terminalConfig?.customAliases ?? defaultTerminalConfig.customAliases,
+    customEnvVars:
+      globalSettings?.terminalConfig?.customEnvVars ?? defaultTerminalConfig.customEnvVars,
+  };
 
-      if (!confirmed) return;
-    }
-
+  const applyEnabledUpdate = (enabled: boolean) => {
     // Ensure all required fields are present
     const updatedConfig = {
       enabled,
@@ -70,6 +78,12 @@ export function TerminalConfigSection() {
       promptFormat: terminalConfig.promptFormat,
       showGitBranch: terminalConfig.showGitBranch,
       showGitStatus: terminalConfig.showGitStatus,
+      showUserHost: terminalConfig.showUserHost,
+      showPath: terminalConfig.showPath,
+      pathStyle: terminalConfig.pathStyle,
+      pathDepth: terminalConfig.pathDepth,
+      showTime: terminalConfig.showTime,
+      showExitStatus: terminalConfig.showExitStatus,
       customAliases: terminalConfig.customAliases,
       customEnvVars: terminalConfig.customEnvVars,
       rcFileVersion: 1,
@@ -98,6 +112,15 @@ export function TerminalConfigSection() {
         },
       }
     );
+  };
+
+  const handleToggleEnabled = async (enabled: boolean) => {
+    if (enabled) {
+      setShowEnableConfirm(true);
+      return;
+    }
+
+    applyEnabledUpdate(false);
   };
 
   const handleUpdateConfig = (updates: Partial<typeof terminalConfig>) => {
@@ -286,6 +309,91 @@ export function TerminalConfigSection() {
                   </div>
                 </div>
 
+                {/* Prompt Segments */}
+                <div className="space-y-4 pl-4 border-l-2 border-border/30">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Wand2 className="w-4 h-4 text-muted-foreground" />
+                      <Label className="text-sm">Show User & Host</Label>
+                    </div>
+                    <Switch
+                      checked={terminalConfig.showUserHost}
+                      onCheckedChange={(checked) => handleUpdateConfig({ showUserHost: checked })}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">~/</span>
+                      <Label className="text-sm">Show Path</Label>
+                    </div>
+                    <Switch
+                      checked={terminalConfig.showPath}
+                      onCheckedChange={(checked) => handleUpdateConfig({ showPath: checked })}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">⏱</span>
+                      <Label className="text-sm">Show Time</Label>
+                    </div>
+                    <Switch
+                      checked={terminalConfig.showTime}
+                      onCheckedChange={(checked) => handleUpdateConfig({ showTime: checked })}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">✗</span>
+                      <Label className="text-sm">Show Exit Status</Label>
+                    </div>
+                    <Switch
+                      checked={terminalConfig.showExitStatus}
+                      onCheckedChange={(checked) => handleUpdateConfig({ showExitStatus: checked })}
+                    />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Path Style</Label>
+                      <Select
+                        value={terminalConfig.pathStyle}
+                        onValueChange={(value: 'full' | 'short' | 'basename') =>
+                          handleUpdateConfig({ pathStyle: value })
+                        }
+                        disabled={!terminalConfig.showPath}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="full">Full</SelectItem>
+                          <SelectItem value="short">Short</SelectItem>
+                          <SelectItem value="basename">Basename</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Path Depth</Label>
+                      <Input
+                        type="number"
+                        min={PATH_DEPTH_MIN}
+                        max={PATH_DEPTH_MAX}
+                        value={terminalConfig.pathDepth}
+                        onChange={(event) =>
+                          handleUpdateConfig({
+                            pathDepth: clampPathDepth(Number(event.target.value) || 0),
+                          })
+                        }
+                        disabled={!terminalConfig.showPath}
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {/* Live Preview */}
                 <div className="space-y-3">
                   <Label className="text-foreground font-medium">Preview</Label>
@@ -294,6 +402,12 @@ export function TerminalConfigSection() {
                     theme={theme}
                     showGitBranch={terminalConfig.showGitBranch}
                     showGitStatus={terminalConfig.showGitStatus}
+                    showUserHost={terminalConfig.showUserHost}
+                    showPath={terminalConfig.showPath}
+                    pathStyle={terminalConfig.pathStyle}
+                    pathDepth={terminalConfig.pathDepth}
+                    showTime={terminalConfig.showTime}
+                    showExitStatus={terminalConfig.showExitStatus}
                   />
                 </div>
               </>
@@ -369,6 +483,27 @@ export function TerminalConfigSection() {
           </>
         )}
       </div>
+
+      <ConfirmDialog
+        open={showEnableConfirm}
+        onOpenChange={setShowEnableConfirm}
+        title="Enable custom terminal configurations"
+        description="Automaker will generate per-project shell configuration files for your terminal."
+        icon={Info}
+        confirmText="Enable"
+        onConfirm={() => applyEnabledUpdate(true)}
+      >
+        <div className="space-y-3 text-sm text-muted-foreground">
+          <ul className="list-disc space-y-1 pl-5">
+            <li>Creates shell config files in `.automaker/terminal/`</li>
+            <li>Applies prompts and colors that match your app theme</li>
+            <li>Leaves your existing `~/.bashrc` and `~/.zshrc` untouched</li>
+          </ul>
+          <p className="text-xs text-muted-foreground">
+            New terminal sessions will use the custom prompt; existing sessions are unchanged.
+          </p>
+        </div>
+      </ConfirmDialog>
     </div>
   );
 }

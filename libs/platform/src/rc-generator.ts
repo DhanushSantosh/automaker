@@ -16,6 +16,12 @@ export interface TerminalConfig {
   promptFormat: 'standard' | 'minimal' | 'powerline' | 'starship';
   showGitBranch: boolean;
   showGitStatus: boolean;
+  showUserHost: boolean;
+  showPath: boolean;
+  pathStyle: 'full' | 'short' | 'basename';
+  pathDepth: number;
+  showTime: boolean;
+  showExitStatus: boolean;
   customAliases: string;
   customEnvVars: Record<string, string>;
   rcFileVersion?: number;
@@ -65,6 +71,8 @@ export interface ANSIColors {
 const STARTUP_COLOR_PRIMARY = 51;
 const STARTUP_COLOR_SECONDARY = 39;
 const STARTUP_COLOR_ACCENT = 33;
+const DEFAULT_PATH_DEPTH = 0;
+const DEFAULT_PATH_STYLE: TerminalConfig['pathStyle'] = 'full';
 
 /**
  * Convert hex color to RGB
@@ -165,6 +173,21 @@ function stripPromptEscapes(ansiColor: string): string {
   return ansiColor.replace(/\\\[/g, '').replace(/\\\]/g, '');
 }
 
+function normalizePathStyle(
+  pathStyle: TerminalConfig['pathStyle'] | undefined
+): TerminalConfig['pathStyle'] {
+  if (pathStyle === 'short' || pathStyle === 'basename') {
+    return pathStyle;
+  }
+  return DEFAULT_PATH_STYLE;
+}
+
+function normalizePathDepth(pathDepth: number | undefined): number {
+  const depth =
+    typeof pathDepth === 'number' && Number.isFinite(pathDepth) ? pathDepth : DEFAULT_PATH_DEPTH;
+  return Math.max(DEFAULT_PATH_DEPTH, Math.floor(depth));
+}
+
 /**
  * Generate common shell functions (git prompt, etc.)
  */
@@ -218,6 +241,12 @@ AUTOMAKER_COLOR_PRIMARY="\\033[38;5;${STARTUP_COLOR_PRIMARY}m"
 AUTOMAKER_COLOR_SECONDARY="\\033[38;5;${STARTUP_COLOR_SECONDARY}m"
 AUTOMAKER_COLOR_ACCENT="\\033[38;5;${STARTUP_COLOR_ACCENT}m"
 AUTOMAKER_COLOR_RESET="\\033[0m"
+AUTOMAKER_SHOW_TIME="${config.showTime === true ? 'true' : 'false'}"
+AUTOMAKER_SHOW_EXIT_STATUS="${config.showExitStatus === true ? 'true' : 'false'}"
+AUTOMAKER_SHOW_USER_HOST="${config.showUserHost === false ? 'false' : 'true'}"
+AUTOMAKER_SHOW_PATH="${config.showPath === false ? 'false' : 'true'}"
+AUTOMAKER_PATH_STYLE="${normalizePathStyle(config.pathStyle)}"
+AUTOMAKER_PATH_DEPTH=${normalizePathDepth(config.pathDepth)}
 
 automaker_command_exists() {
   command -v "$1" >/dev/null 2>&1
@@ -349,6 +378,120 @@ automaker_get_ip() {
   echo "$AUTOMAKER_INFO_UNKNOWN"
 }
 
+automaker_trim_path_depth() {
+  local path="$1"
+  local depth="$2"
+  if [ -z "$depth" ] || [ "$depth" -le 0 ]; then
+    echo "$path"
+    return
+  fi
+
+  echo "$path" | awk -v depth="$depth" -F/ '{
+    prefix=""
+    start=1
+    if ($1=="") { prefix="/"; start=2 }
+    else if ($1=="~") { prefix="~/"; start=2 }
+    n=NF
+    if (n < start) {
+      if (prefix=="/") { print "/" }
+      else if (prefix=="~/") { print "~" }
+      else { print $0 }
+      next
+    }
+    segCount = n - start + 1
+    d = depth
+    if (d > segCount) { d = segCount }
+    out=""
+    for (i = n - d + 1; i <= n; i++) {
+      out = out (out=="" ? "" : "/") $i
+    }
+    if (prefix=="/") {
+      if (out=="") { out="/" } else { out="/" out }
+    } else if (prefix=="~/") {
+      if (out=="") { out="~" } else { out="~/" out }
+    }
+    print out
+  }'
+}
+
+automaker_shorten_path() {
+  local path="$1"
+  echo "$path" | awk -F/ '{
+    prefix=""
+    start=1
+    if ($1=="") { prefix="/"; start=2 }
+    else if ($1=="~") { prefix="~/"; start=2 }
+    n=NF
+    if (n < start) {
+      if (prefix=="/") { print "/" }
+      else if (prefix=="~/") { print "~" }
+      else { print $0 }
+      next
+    }
+    out=""
+    for (i = start; i <= n; i++) {
+      seg = $i
+      if (i < n && length(seg) > 0) { seg = substr(seg, 1, 1) }
+      out = out (out=="" ? "" : "/") seg
+    }
+    if (prefix=="/") { out="/" out }
+    else if (prefix=="~/") { out="~/" out }
+    print out
+  }'
+}
+
+automaker_prompt_path() {
+  if [ "$AUTOMAKER_SHOW_PATH" != "true" ]; then
+    return
+  fi
+
+  local current_path="$PWD"
+  if [ -n "$HOME" ] && [ "\${current_path#"$HOME"}" != "$current_path" ]; then
+    current_path="~\${current_path#$HOME}"
+  fi
+
+  if [ "$AUTOMAKER_PATH_DEPTH" -gt 0 ]; then
+    current_path=$(automaker_trim_path_depth "$current_path" "$AUTOMAKER_PATH_DEPTH")
+  fi
+
+  case "$AUTOMAKER_PATH_STYLE" in
+    basename)
+      if [ "$current_path" = "/" ] || [ "$current_path" = "~" ]; then
+        echo -n "$current_path"
+      else
+        echo -n "\${current_path##*/}"
+      fi
+      ;;
+    short)
+      echo -n "$(automaker_shorten_path "$current_path")"
+      ;;
+    full|*)
+      echo -n "$current_path"
+      ;;
+  esac
+}
+
+automaker_prompt_time() {
+  if [ "$AUTOMAKER_SHOW_TIME" != "true" ]; then
+    return
+  fi
+
+  date +%H:%M
+}
+
+automaker_prompt_status() {
+  automaker_last_status=$?
+  if [ "$AUTOMAKER_SHOW_EXIT_STATUS" != "true" ]; then
+    return
+  fi
+
+  if [ "$automaker_last_status" -eq 0 ]; then
+    return
+  fi
+
+  printf "✗ %s" "$automaker_last_status"
+}
+
 automaker_show_banner() {
   local label_width="$AUTOMAKER_BANNER_LABEL_WIDTH"
   local logo_line_1="  █▀▀█ █  █ ▀▀█▀▀ █▀▀█ █▀▄▀█ █▀▀█ █ █ █▀▀ █▀▀█  "
@@ -402,27 +545,92 @@ automaker_show_banner_once() {
 /**
  * Generate prompt based on format
  */
-function generatePrompt(format: TerminalConfig['promptFormat'], colors: ANSIColors): string {
+function generatePrompt(
+  format: TerminalConfig['promptFormat'],
+  colors: ANSIColors,
+  config: TerminalConfig
+): string {
+  const userHostSegment = config.showUserHost
+    ? `${colors.user}\\u${colors.reset}@${colors.host}\\h${colors.reset}`
+    : '';
+  const pathSegment = config.showPath
+    ? `${colors.path}\\$(automaker_prompt_path)${colors.reset}`
+    : '';
+  const gitSegment = config.showGitBranch
+    ? `${colors.gitBranch}\\$(automaker_git_prompt)${colors.reset}`
+    : '';
+  const timeSegment = config.showTime
+    ? `${colors.gitBranch}[\\$(automaker_prompt_time)]${colors.reset}`
+    : '';
+  const statusSegment = config.showExitStatus
+    ? `${colors.gitDirty}\\$(automaker_prompt_status)${colors.reset}`
+    : '';
+
   switch (format) {
-    case 'minimal':
-      return `PS1="${colors.path}\\w${colors.reset}\\$(automaker_git_prompt) ${colors.prompt}\\$${colors.reset} "`;
+    case 'minimal': {
+      const minimalSegments = [timeSegment, userHostSegment, pathSegment, gitSegment, statusSegment]
+        .filter((segment) => segment.length > 0)
+        .join(' ');
+      return `PS1="${minimalSegments ? `${minimalSegments} ` : ''}${colors.prompt}\\$${colors.reset} "`;
+    }
 
-    case 'powerline':
-      return `PS1="┌─[${colors.user}\\u${colors.reset}@${colors.host}\\h${colors.reset}]─[${colors.path}\\w${colors.reset}]\\$(automaker_git_prompt)\\n└─${colors.prompt}\\$${colors.reset} "`;
+    case 'powerline': {
+      const powerlineCoreSegments = [
+        userHostSegment ? `[${userHostSegment}]` : '',
+        pathSegment ? `[${pathSegment}]` : '',
+      ].filter((segment) => segment.length > 0);
+      const powerlineCore = powerlineCoreSegments.join('─');
+      const powerlineExtras = [gitSegment, timeSegment, statusSegment]
+        .filter((segment) => segment.length > 0)
+        .join(' ');
+      const powerlineLine = [powerlineCore, powerlineExtras]
+        .filter((segment) => segment.length > 0)
+        .join(' ');
+      return `PS1="┌─${powerlineLine}\\n└─${colors.prompt}\\$${colors.reset} "`;
+    }
 
-    case 'starship':
-      return `PS1="${colors.user}\\u${colors.reset}@${colors.host}\\h${colors.reset} in ${colors.path}\\w${colors.reset}\\$(automaker_git_prompt)\\n${colors.prompt}❯${colors.reset} "`;
+    case 'starship': {
+      let starshipLine = '';
+      if (userHostSegment && pathSegment) {
+        starshipLine = `${userHostSegment} in ${pathSegment}`;
+      } else {
+        starshipLine = [userHostSegment, pathSegment]
+          .filter((segment) => segment.length > 0)
+          .join(' ');
+      }
+      if (gitSegment) {
+        starshipLine = `${starshipLine}${starshipLine ? ' on ' : ''}${gitSegment}`;
+      }
+      const starshipSegments = [timeSegment, starshipLine, statusSegment]
+        .filter((segment) => segment.length > 0)
+        .join(' ');
+      return `PS1="${starshipSegments}\\n${colors.prompt}❯${colors.reset} "`;
+    }
 
     case 'standard':
-    default:
-      return `PS1="[${colors.user}\\u${colors.reset}@${colors.host}\\h${colors.reset}] ${colors.path}\\w${colors.reset}\\$(automaker_git_prompt) ${colors.prompt}\\$${colors.reset} "`;
+    default: {
+      const standardSegments = [
+        timeSegment,
+        userHostSegment ? `[${userHostSegment}]` : '',
+        pathSegment,
+        gitSegment,
+        statusSegment,
+      ]
+        .filter((segment) => segment.length > 0)
+        .join(' ');
+      return `PS1="${standardSegments ? `${standardSegments} ` : ''}${colors.prompt}\\$${colors.reset} "`;
+    }
   }
 }
 
 /**
  * Generate Zsh prompt based on format
  */
-function generateZshPrompt(format: TerminalConfig['promptFormat'], colors: ANSIColors): string {
+function generateZshPrompt(
+  format: TerminalConfig['promptFormat'],
+  colors: ANSIColors,
+  config: TerminalConfig
+): string {
   // Convert bash-style \u, \h, \w to zsh-style %n, %m, %~
   // Remove bash-style escaping \[ \] (not needed in zsh)
   const zshColors = {
@@ -456,21 +664,80 @@ function generateZshPrompt(format: TerminalConfig['promptFormat'], colors: ANSIC
       .replace(/m\\]/g, 'm%}'),
   };
 
+  const userHostSegment = config.showUserHost
+    ? `[${zshColors.user}%n${zshColors.reset}@${zshColors.host}%m${zshColors.reset}]`
+    : '';
+  const pathSegment = config.showPath
+    ? `${zshColors.path}$(automaker_prompt_path)${zshColors.reset}`
+    : '';
+  const gitSegment = config.showGitBranch
+    ? `${zshColors.gitBranch}$(automaker_git_prompt)${zshColors.reset}`
+    : '';
+  const timeSegment = config.showTime
+    ? `${zshColors.gitBranch}[$(automaker_prompt_time)]${zshColors.reset}`
+    : '';
+  const statusSegment = config.showExitStatus
+    ? `${zshColors.gitDirty}$(automaker_prompt_status)${zshColors.reset}`
+    : '';
+  const segments = [timeSegment, userHostSegment, pathSegment, gitSegment, statusSegment].filter(
+    (segment) => segment.length > 0
+  );
+  const inlineSegments = segments.join(' ');
+  const inlineWithSpace = inlineSegments ? `${inlineSegments} ` : '';
+
   switch (format) {
-    case 'minimal':
-      return `PROMPT="${zshColors.path}%~${zshColors.reset}\\$(automaker_git_prompt) ${zshColors.prompt}%#${zshColors.reset} "`;
+    case 'minimal': {
+      return `PROMPT="${inlineWithSpace}${zshColors.prompt}%#${zshColors.reset} "`;
+    }
 
-    case 'powerline':
-      return `PROMPT="┌─[${zshColors.user}%n${zshColors.reset}@${zshColors.host}%m${zshColors.reset}]─[${zshColors.path}%~${zshColors.reset}]\\$(automaker_git_prompt)
+    case 'powerline': {
+      const powerlineCoreSegments = [
+        userHostSegment ? `[${userHostSegment}]` : '',
+        pathSegment ? `[${pathSegment}]` : '',
+      ].filter((segment) => segment.length > 0);
+      const powerlineCore = powerlineCoreSegments.join('─');
+      const powerlineExtras = [gitSegment, timeSegment, statusSegment]
+        .filter((segment) => segment.length > 0)
+        .join(' ');
+      const powerlineLine = [powerlineCore, powerlineExtras]
+        .filter((segment) => segment.length > 0)
+        .join(' ');
+      return `PROMPT="┌─${powerlineLine}
 └─${zshColors.prompt}%#${zshColors.reset} "`;
+    }
 
-    case 'starship':
-      return `PROMPT="${zshColors.user}%n${zshColors.reset}@${zshColors.host}%m${zshColors.reset} in ${zshColors.path}%~${zshColors.reset}\\$(automaker_git_prompt)
+    case 'starship': {
+      let starshipLine = '';
+      if (userHostSegment && pathSegment) {
+        starshipLine = `${userHostSegment} in ${pathSegment}`;
+      } else {
+        starshipLine = [userHostSegment, pathSegment]
+          .filter((segment) => segment.length > 0)
+          .join(' ');
+      }
+      if (gitSegment) {
+        starshipLine = `${starshipLine}${starshipLine ? ' on ' : ''}${gitSegment}`;
+      }
+      const starshipSegments = [timeSegment, starshipLine, statusSegment]
+        .filter((segment) => segment.length > 0)
+        .join(' ');
+      return `PROMPT="${starshipSegments}
 ${zshColors.prompt}❯${zshColors.reset} "`;
+    }
 
     case 'standard':
-    default:
-      return `PROMPT="[${zshColors.user}%n${zshColors.reset}@${zshColors.host}%m${zshColors.reset}] ${zshColors.path}%~${zshColors.reset}\\$(automaker_git_prompt) ${zshColors.prompt}%#${zshColors.reset} "`;
+    default: {
+      const standardSegments = [
+        timeSegment,
+        userHostSegment ? `[${userHostSegment}]` : '',
+        pathSegment,
+        gitSegment,
+        statusSegment,
+      ]
+        .filter((segment) => segment.length > 0)
+        .join(' ');
+      return `PROMPT="${standardSegments ? `${standardSegments} ` : ''}${zshColors.prompt}%#${zshColors.reset} "`;
+    }
   }
 }
 
@@ -514,7 +781,7 @@ ${validEnvVars}
  */
 export function generateBashrc(theme: TerminalTheme, config: TerminalConfig): string {
   const colors = getThemeANSIColors(theme);
-  const promptLine = generatePrompt(config.promptFormat, colors);
+  const promptLine = generatePrompt(config.promptFormat, colors, config);
 
   return `#!/bin/bash
 # Automaker Terminal Configuration v1.0
@@ -558,7 +825,7 @@ fi
  */
 export function generateZshrc(theme: TerminalTheme, config: TerminalConfig): string {
   const colors = getThemeANSIColors(theme);
-  const promptLine = generateZshPrompt(config.promptFormat, colors);
+  const promptLine = generateZshPrompt(config.promptFormat, colors, config);
 
   return `#!/bin/zsh
 # Automaker Terminal Configuration v1.0

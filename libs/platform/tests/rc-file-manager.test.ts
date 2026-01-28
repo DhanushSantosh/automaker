@@ -18,6 +18,8 @@ describe('rc-file-manager.ts', () => {
   const PROMPT_FORMAT_STANDARD: TerminalConfig['promptFormat'] = 'standard';
   const PROMPT_FORMAT_MINIMAL: TerminalConfig['promptFormat'] = 'minimal';
   const EMPTY_ALIASES = '';
+  const PATH_STYLE_FULL: TerminalConfig['pathStyle'] = 'full';
+  const PATH_DEPTH_DEFAULT = 0;
 
   const baseConfig: TerminalConfig = {
     enabled: true,
@@ -25,6 +27,12 @@ describe('rc-file-manager.ts', () => {
     promptFormat: PROMPT_FORMAT_STANDARD,
     showGitBranch: true,
     showGitStatus: true,
+    showUserHost: true,
+    showPath: true,
+    pathStyle: PATH_STYLE_FULL,
+    pathDepth: PATH_DEPTH_DEFAULT,
+    showTime: false,
+    showExitStatus: false,
     customAliases: EMPTY_ALIASES,
     customEnvVars: {},
   };

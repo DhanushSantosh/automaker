@@ -9,7 +9,11 @@ set -e
 # ============================================================================
 # CONFIGURATION & CONSTANTS
 # ============================================================================
-export $(grep -v '^#' .env | xargs)
+if [ -f .env ]; then
+    set -a
+    . ./.env
+    set +a
+fi
 APP_NAME="Automaker"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HISTORY_FILE="${HOME}/.automaker_launcher_history"

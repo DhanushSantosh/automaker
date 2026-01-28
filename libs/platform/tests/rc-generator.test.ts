@@ -9,6 +9,8 @@ describe('rc-generator.ts', () => {
   const PROMPT_FORMAT_STANDARD: TerminalConfig['promptFormat'] = 'standard';
   const EMPTY_ALIASES = '';
   const EMPTY_ENV_VARS = {};
+  const PATH_STYLE_FULL: TerminalConfig['pathStyle'] = 'full';
+  const PATH_DEPTH_DEFAULT = 0;
   const EXPECTED_BANNER_FUNCTION = 'automaker_show_banner_once';
   const RAW_COLOR_PREFIX = 'export COLOR_USER_RAW=';
   const RAW_COLOR_ESCAPE_START = '\\\\[';
@@ -23,6 +25,12 @@ describe('rc-generator.ts', () => {
     promptFormat: PROMPT_FORMAT_STANDARD,
     showGitBranch: true,
     showGitStatus: true,
+    showUserHost: true,
+    showPath: true,
+    pathStyle: PATH_STYLE_FULL,
+    pathDepth: PATH_DEPTH_DEFAULT,
+    showTime: false,
+    showExitStatus: false,
     customAliases: EMPTY_ALIASES,
     customEnvVars: EMPTY_ENV_VARS,
   };

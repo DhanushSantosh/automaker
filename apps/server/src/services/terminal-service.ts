@@ -37,6 +37,16 @@ const BASH_RCFILE_ARG = '--rcfile';
 const SHELL_NAME_BASH = 'bash';
 const SHELL_NAME_ZSH = 'zsh';
 const SHELL_NAME_SH = 'sh';
+const DEFAULT_SHOW_USER_HOST = true;
+const DEFAULT_SHOW_PATH = true;
+const DEFAULT_SHOW_TIME = false;
+const DEFAULT_SHOW_EXIT_STATUS = false;
+const DEFAULT_PATH_DEPTH = 0;
+const DEFAULT_PATH_STYLE: TerminalConfig['pathStyle'] = 'full';
+const DEFAULT_CUSTOM_PROMPT = true;
+const DEFAULT_PROMPT_FORMAT: TerminalConfig['promptFormat'] = 'standard';
+const DEFAULT_SHOW_GIT_BRANCH = true;
+const DEFAULT_SHOW_GIT_STATUS = true;
 
 // Maximum scrollback buffer size (characters)
 const MAX_SCROLLBACK_SIZE = 50000; // ~50KB per terminal
@@ -73,6 +83,21 @@ function applyBashRcFileArgs(args: string[], rcFilePath: string): string[] {
 
   sanitizedArgs.push(BASH_RCFILE_ARG, rcFilePath);
   return sanitizedArgs;
+}
+
+function normalizePathStyle(
+  pathStyle: TerminalConfig['pathStyle'] | undefined
+): TerminalConfig['pathStyle'] {
+  if (pathStyle === 'short' || pathStyle === 'basename') {
+    return pathStyle;
+  }
+  return DEFAULT_PATH_STYLE;
+}
+
+function normalizePathDepth(pathDepth: number | undefined): number {
+  const depth =
+    typeof pathDepth === 'number' && Number.isFinite(pathDepth) ? pathDepth : DEFAULT_PATH_DEPTH;
+  return Math.max(DEFAULT_PATH_DEPTH, Math.floor(depth));
 }
 
 export interface TerminalSession {
@@ -408,10 +433,16 @@ export class TerminalService extends EventEmitter {
           // Full config object (global + project overrides)
           const effectiveConfig: TerminalConfig = {
             enabled: true,
-            customPrompt: globalTerminalConfig.customPrompt,
-            promptFormat: globalTerminalConfig.promptFormat,
-            showGitBranch: globalTerminalConfig.showGitBranch,
-            showGitStatus: globalTerminalConfig.showGitStatus,
+            customPrompt: globalTerminalConfig.customPrompt ?? DEFAULT_CUSTOM_PROMPT,
+            promptFormat: globalTerminalConfig.promptFormat ?? DEFAULT_PROMPT_FORMAT,
+            showGitBranch: globalTerminalConfig.showGitBranch ?? DEFAULT_SHOW_GIT_BRANCH,
+            showGitStatus: globalTerminalConfig.showGitStatus ?? DEFAULT_SHOW_GIT_STATUS,
+            showUserHost: globalTerminalConfig.showUserHost ?? DEFAULT_SHOW_USER_HOST,
+            showPath: globalTerminalConfig.showPath ?? DEFAULT_SHOW_PATH,
+            pathStyle: normalizePathStyle(globalTerminalConfig.pathStyle),
+            pathDepth: normalizePathDepth(globalTerminalConfig.pathDepth),
+            showTime: globalTerminalConfig.showTime ?? DEFAULT_SHOW_TIME,
+            showExitStatus: globalTerminalConfig.showExitStatus ?? DEFAULT_SHOW_EXIT_STATUS,
             customAliases:
               projectTerminalConfig?.customAliases || globalTerminalConfig.customAliases,
             customEnvVars: {
@@ -810,10 +841,16 @@ export class TerminalService extends EventEmitter {
         // Regenerate RC files with new theme
         const effectiveConfig: TerminalConfig = {
           enabled: true,
-          customPrompt: terminalConfig.customPrompt,
-          promptFormat: terminalConfig.promptFormat,
-          showGitBranch: terminalConfig.showGitBranch,
-          showGitStatus: terminalConfig.showGitStatus,
+          customPrompt: terminalConfig.customPrompt ?? DEFAULT_CUSTOM_PROMPT,
+          promptFormat: terminalConfig.promptFormat ?? DEFAULT_PROMPT_FORMAT,
+          showGitBranch: terminalConfig.showGitBranch ?? DEFAULT_SHOW_GIT_BRANCH,
+          showGitStatus: terminalConfig.showGitStatus ?? DEFAULT_SHOW_GIT_STATUS,
+          showUserHost: terminalConfig.showUserHost ?? DEFAULT_SHOW_USER_HOST,
+          showPath: terminalConfig.showPath ?? DEFAULT_SHOW_PATH,
+          pathStyle: normalizePathStyle(terminalConfig.pathStyle),
+          pathDepth: normalizePathDepth(terminalConfig.pathDepth),
+          showTime: terminalConfig.showTime ?? DEFAULT_SHOW_TIME,
+          showExitStatus: terminalConfig.showExitStatus ?? DEFAULT_SHOW_EXIT_STATUS,
           customAliases: terminalConfig.customAliases,
           customEnvVars: terminalConfig.customEnvVars,
           rcFileVersion: terminalConfig.rcFileVersion,

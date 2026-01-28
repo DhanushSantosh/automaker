@@ -2,6 +2,7 @@
  * Prompt Preview - Shows a live preview of the custom terminal prompt
  */
 
+import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import type { ThemeMode } from '@automaker/types';
 import { getTerminalTheme } from '@/config/terminal-themes';
@@ -11,6 +12,12 @@ interface PromptPreviewProps {
   theme: ThemeMode;
   showGitBranch: boolean;
   showGitStatus: boolean;
+  showUserHost: boolean;
+  showPath: boolean;
+  pathStyle: 'full' | 'short' | 'basename';
+  pathDepth: number;
+  showTime: boolean;
+  showExitStatus: boolean;
   className?: string;
 }
 
@@ -19,17 +26,63 @@ export function PromptPreview({
   theme,
   showGitBranch,
   showGitStatus,
+  showUserHost,
+  showPath,
+  pathStyle,
+  pathDepth,
+  showTime,
+  showExitStatus,
   className,
 }: PromptPreviewProps) {
   const terminalTheme = getTerminalTheme(theme);
+
+  const formatPath = (inputPath: string) => {
+    let displayPath = inputPath;
+    let prefix = '';
+
+    if (displayPath.startsWith('~/')) {
+      prefix = '~/';
+      displayPath = displayPath.slice(2);
+    } else if (displayPath.startsWith('/')) {
+      prefix = '/';
+      displayPath = displayPath.slice(1);
+    }
+
+    const segments = displayPath.split('/').filter((segment) => segment.length > 0);
+    const depth = Math.max(0, pathDepth);
+    const trimmedSegments = depth > 0 ? segments.slice(-depth) : segments;
+
+    let formattedSegments = trimmedSegments;
+    if (pathStyle === 'basename' && trimmedSegments.length > 0) {
+      formattedSegments = [trimmedSegments[trimmedSegments.length - 1]];
+    } else if (pathStyle === 'short') {
+      formattedSegments = trimmedSegments.map((segment, index) => {
+        if (index < trimmedSegments.length - 1) {
+          return segment.slice(0, 1);
+        }
+        return segment;
+      });
+    }
+
+    const joined = formattedSegments.join('/');
+    if (prefix === '/' && joined.length === 0) {
+      return '/';
+    }
+    if (prefix === '~/' && joined.length === 0) {
+      return '~';
+    }
+    return `${prefix}${joined}`;
+  };
 
   // Generate preview text based on format
   const renderPrompt = () => {
     const user = 'user';
     const host = 'automaker';
-    const path = '~/projects/automaker';
+    const path = formatPath('~/projects/automaker');
     const branch = showGitBranch ? 'main' : null;
     const dirty = showGitStatus && showGitBranch ? '*' : '';
+    const time = showTime ? '[14:32]' : '';
+    const status = showExitStatus ? '✗ 1' : '';
 
     const gitInfo = branch ? ` (${branch}${dirty})` : '';
 
@@ -37,25 +90,79 @@ export function PromptPreview({
       case 'minimal':
         return (
           <div className="font-mono text-sm leading-relaxed">
-            <span style={{ color: terminalTheme.yellow }}>{path}</span>
+            {showTime && <span style={{ color: terminalTheme.magenta }}>{time} </span>}
+            {showUserHost && (
+              <span style={{ color: terminalTheme.cyan }}>
+                {user}
+                <span style={{ color: terminalTheme.foreground }}>@</span>
+                <span style={{ color: terminalTheme.blue }}>{host}</span>{' '}
+              </span>
+            )}
+            {showPath && <span style={{ color: terminalTheme.yellow }}>{path}</span>}
             {gitInfo && <span style={{ color: terminalTheme.magenta }}>{gitInfo}</span>}
+            {showExitStatus && <span style={{ color: terminalTheme.red }}> {status}</span>}
             <span style={{ color: terminalTheme.green }}> $</span>
             <span className="ml-1 animate-pulse">▊</span>
           </div>
         );
 
       case 'powerline':
+        const powerlineSegments: ReactNode[] = [];
+        if (showUserHost) {
+          powerlineSegments.push(
+            <span key="user-host" style={{ color: terminalTheme.cyan }}>
+              [{user}
+              <span style={{ color: terminalTheme.foreground }}>@</span>
+              <span style={{ color: terminalTheme.blue }}>{host}</span>]
+            </span>
+          );
+        }
+        if (showPath) {
+          powerlineSegments.push(
+            <span key="path" style={{ color: terminalTheme.yellow }}>
+              [{path}]
+            </span>
+          );
+        }
+        const powerlineCore = powerlineSegments.flatMap((segment, index) =>
+          index === 0
+            ? [segment]
+            : [
+                <span key={`sep-${index}`} style={{ color: terminalTheme.cyan }}>
+                  ─
+                </span>,
+                segment,
+              ]
+        );
+        const powerlineExtras: ReactNode[] = [];
+        if (gitInfo) {
+          powerlineExtras.push(
+            <span key="git" style={{ color: terminalTheme.magenta }}>
+              {gitInfo}
+            </span>
+          );
+        }
+        if (showTime) {
+          powerlineExtras.push(
+            <span key="time" style={{ color: terminalTheme.magenta }}>
+              {time}
+            </span>
+          );
+        }
+        if (showExitStatus) {
+          powerlineExtras.push(
+            <span key="status" style={{ color: terminalTheme.red }}>
+              {status}
+            </span>
+          );
+        }
+        const powerlineLine = [...powerlineCore, ...powerlineExtras].filter(Boolean);
+
         return (
           <div className="font-mono text-sm leading-relaxed space-y-1">
             <div>
-              <span style={{ color: terminalTheme.cyan }}>┌─[</span>
-              <span style={{ color: terminalTheme.cyan }}>{user}</span>
-              <span style={{ color: terminalTheme.foreground }}>@</span>
-              <span style={{ color: terminalTheme.blue }}>{host}</span>
-              <span style={{ color: terminalTheme.cyan }}>]─[</span>
-              <span style={{ color: terminalTheme.yellow }}>{path}</span>
-              <span style={{ color: terminalTheme.cyan }}>]</span>
-              {gitInfo && <span style={{ color: terminalTheme.magenta }}>{gitInfo}</span>}
+              <span style={{ color: terminalTheme.cyan }}>┌─</span>
+              {powerlineLine}
             </div>
             <div>
               <span style={{ color: terminalTheme.cyan }}>└─</span>
@@ -69,11 +176,20 @@ export function PromptPreview({
         return (
           <div className="font-mono text-sm leading-relaxed space-y-1">
             <div>
-              <span style={{ color: terminalTheme.cyan }}>{user}</span>
-              <span style={{ color: terminalTheme.foreground }}>@</span>
-              <span style={{ color: terminalTheme.blue }}>{host}</span>
-              <span style={{ color: terminalTheme.foreground }}> in </span>
-              <span style={{ color: terminalTheme.yellow }}>{path}</span>
+              {showTime && <span style={{ color: terminalTheme.magenta }}>{time} </span>}
+              {showUserHost && (
+                <>
+                  <span style={{ color: terminalTheme.cyan }}>{user}</span>
+                  <span style={{ color: terminalTheme.foreground }}>@</span>
+                  <span style={{ color: terminalTheme.blue }}>{host}</span>
+                </>
+              )}
+              {showPath && (
+                <>
+                  <span style={{ color: terminalTheme.foreground }}> in </span>
+                  <span style={{ color: terminalTheme.yellow }}>{path}</span>
+                </>
+              )}
               {branch && (
                 <>
                   <span style={{ color: terminalTheme.foreground }}> on </span>
@@ -83,6 +199,7 @@ export function PromptPreview({
                   </span>
                 </>
               )}
+              {showExitStatus && <span style={{ color: terminalTheme.red }}> {status}</span>}
             </div>
             <div>
               <span style={{ color: terminalTheme.green }}>❯</span>
@@ -95,12 +212,18 @@ export function PromptPreview({
       default:
         return (
           <div className="font-mono text-sm leading-relaxed">
-            <span style={{ color: terminalTheme.cyan }}>[{user}</span>
-            <span style={{ color: terminalTheme.foreground }}>@</span>
-            <span style={{ color: terminalTheme.blue }}>{host}</span>
-            <span style={{ color: terminalTheme.cyan }}>]</span>
-            <span style={{ color: terminalTheme.yellow }}> {path}</span>
+            {showTime && <span style={{ color: terminalTheme.magenta }}>{time} </span>}
+            {showUserHost && (
+              <>
+                <span style={{ color: terminalTheme.cyan }}>[{user}</span>
+                <span style={{ color: terminalTheme.foreground }}>@</span>
+                <span style={{ color: terminalTheme.blue }}>{host}</span>
+                <span style={{ color: terminalTheme.cyan }}>]</span>
+              </>
+            )}
+            {showPath && <span style={{ color: terminalTheme.yellow }}> {path}</span>}
             {gitInfo && <span style={{ color: terminalTheme.magenta }}>{gitInfo}</span>}
+            {showExitStatus && <span style={{ color: terminalTheme.red }}> {status}</span>}
             <span style={{ color: terminalTheme.green }}> $</span>
             <span className="ml-1 animate-pulse">▊</span>
           </div>

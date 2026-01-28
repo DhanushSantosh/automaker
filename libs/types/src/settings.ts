@@ -862,6 +862,18 @@ export interface GlobalSettings {
     showGitBranch: boolean;
     /** Show git status dirty indicator (default: true) */
     showGitStatus: boolean;
+    /** Show user and host in prompt (default: true) */
+    showUserHost: boolean;
+    /** Show path in prompt (default: true) */
+    showPath: boolean;
+    /** Path display style */
+    pathStyle: 'full' | 'short' | 'basename';
+    /** Limit path depth (0 = full path) */
+    pathDepth: number;
+    /** Show current time in prompt (default: false) */
+    showTime: boolean;
+    /** Show last command exit status when non-zero (default: false) */
+    showExitStatus: boolean;
     /** User-provided custom aliases (multiline string) */
     customAliases: string;
     /** User-provided custom env vars */
@@ -1279,6 +1291,18 @@ export interface ProjectSettings {
   terminalConfig?: {
     /** Override global enabled setting */
     enabled?: boolean;
+    /** Override showing user/host */
+    showUserHost?: boolean;
+    /** Override showing path */
+    showPath?: boolean;
+    /** Override path style */
+    pathStyle?: 'full' | 'short' | 'basename';
+    /** Override path depth (0 = full path) */
+    pathDepth?: number;
+    /** Override showing time */
+    showTime?: boolean;
+    /** Override showing exit status */
+    showExitStatus?: boolean;
     /** Project-specific custom aliases */
     customAliases?: string;
     /** Project-specific env vars */
