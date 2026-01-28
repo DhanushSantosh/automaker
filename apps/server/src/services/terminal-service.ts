@@ -32,6 +32,12 @@ import {
   getShellPaths,
 } from '@automaker/platform';
 
+const BASH_LOGIN_ARG = '--login';
+const BASH_RCFILE_ARG = '--rcfile';
+const SHELL_NAME_BASH = 'bash';
+const SHELL_NAME_ZSH = 'zsh';
+const SHELL_NAME_SH = 'sh';
+
 // Maximum scrollback buffer size (characters)
 const MAX_SCROLLBACK_SIZE = 50000; // ~50KB per terminal
 
@@ -49,6 +55,25 @@ let maxSessions = parseInt(process.env.TERMINAL_MAX_SESSIONS || '1000', 10);
 // Note: 16ms caused perceived input lag, especially with backspace
 const OUTPUT_THROTTLE_MS = 4; // ~250fps max update rate for responsive input
 const OUTPUT_BATCH_SIZE = 4096; // Smaller batches for lower latency
+
+function applyBashRcFileArgs(args: string[], rcFilePath: string): string[] {
+  const sanitizedArgs: string[] = [];
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === BASH_LOGIN_ARG) {
+      continue;
+    }
+    if (arg === BASH_RCFILE_ARG) {
+      index += 1;
+      continue;
+    }
+    sanitizedArgs.push(arg);
+  }
+
+  sanitizedArgs.push(BASH_RCFILE_ARG, rcFilePath);
+  return sanitizedArgs;
+}
 
 export interface TerminalSession {
   id: string;
@@ -130,11 +155,11 @@ export class TerminalService extends EventEmitter {
         return [];
       }
       // sh doesn't support --login in all implementations
-      if (shellName === 'sh') {
+      if (shellName === SHELL_NAME_SH) {
         return [];
       }
       // bash, zsh, and other POSIX shells support --login
-      return ['--login'];
+      return [BASH_LOGIN_ARG];
     };
 
     // Check if running in WSL - prefer user's shell or bash with --login
@@ -327,8 +352,9 @@ export class TerminalService extends EventEmitter {
 
     const id = `term-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
-    const { shell: detectedShell, args: shellArgs } = this.detectShell();
+    const { shell: detectedShell, args: detectedShellArgs } = this.detectShell();
     const shell = options.shell || detectedShell;
+    let shellArgs = [...detectedShellArgs];
 
     // Validate and resolve working directory
     // Uses secureFs internally to enforce ALLOWED_ROOT_DIRECTORY
@@ -407,20 +433,22 @@ export class TerminalService extends EventEmitter {
           // Set shell-specific env vars
           const shellName = path.basename(shell).toLowerCase();
 
-          if (shellName.includes('bash')) {
-            terminalConfigEnv.BASH_ENV = getRcFilePath(options.cwd || cwd, 'bash');
+          if (shellName.includes(SHELL_NAME_BASH)) {
+            const bashRcFilePath = getRcFilePath(options.cwd || cwd, SHELL_NAME_BASH);
+            terminalConfigEnv.BASH_ENV = bashRcFilePath;
             terminalConfigEnv.AUTOMAKER_CUSTOM_PROMPT = effectiveConfig.customPrompt
               ? 'true'
               : 'false';
             terminalConfigEnv.AUTOMAKER_THEME = currentTheme;
-          } else if (shellName.includes('zsh')) {
+            shellArgs = applyBashRcFileArgs(shellArgs, bashRcFilePath);
+          } else if (shellName.includes(SHELL_NAME_ZSH)) {
             terminalConfigEnv.ZDOTDIR = getTerminalDir(options.cwd || cwd);
             terminalConfigEnv.AUTOMAKER_CUSTOM_PROMPT = effectiveConfig.customPrompt
               ? 'true'
               : 'false';
             terminalConfigEnv.AUTOMAKER_THEME = currentTheme;
-          } else if (shellName === 'sh') {
-            terminalConfigEnv.ENV = getRcFilePath(options.cwd || cwd, 'sh');
+          } else if (shellName === SHELL_NAME_SH) {
+            terminalConfigEnv.ENV = getRcFilePath(options.cwd || cwd, SHELL_NAME_SH);
             terminalConfigEnv.AUTOMAKER_CUSTOM_PROMPT = effectiveConfig.customPrompt
               ? 'true'
               : 'false';

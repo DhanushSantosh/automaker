@@ -7,6 +7,7 @@
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import type { ThemeMode } from '@automaker/types';
 import {
   generateBashrc,
@@ -21,6 +22,8 @@ import {
  * Current RC file format version
  */
 export const RC_FILE_VERSION = 1;
+
+const RC_SIGNATURE_FILENAME = 'config.sha256';
 
 /**
  * Get the terminal directory path
@@ -75,6 +78,47 @@ async function atomicWriteFile(
   await fs.rename(tempPath, filePath);
 }
 
+function sortObjectKeys(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sortObjectKeys(item));
+  }
+
+  if (value && typeof value === 'object') {
+    const sortedEntries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right));
+
+    const sortedObject: Record<string, unknown> = {};
+    for (const [key, entryValue] of sortedEntries) {
+      sortedObject[key] = sortObjectKeys(entryValue);
+    }
+    return sortedObject;
+  }
+
+  return value;
+}
+
+function buildConfigSignature(theme: ThemeMode, config: TerminalConfig): string {
+  const payload = { theme, config: sortObjectKeys(config) };
+  const serializedPayload = JSON.stringify(payload);
+  return createHash('sha256').update(serializedPayload).digest('hex');
+}
+
+async function readSignatureFile(projectPath: string): Promise<string | null> {
+  const signaturePath = path.join(getTerminalDir(projectPath), RC_SIGNATURE_FILENAME);
+  try {
+    const signature = await fs.readFile(signaturePath, 'utf8');
+    return signature.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeSignatureFile(projectPath: string, signature: string): Promise<void> {
+  const signaturePath = path.join(getTerminalDir(projectPath), RC_SIGNATURE_FILENAME);
+  await atomicWriteFile(signaturePath, `${signature}\n`, 0o644);
+}
+
 /**
  * Check current RC file version
  */
@@ -100,11 +144,21 @@ async function writeVersionFile(projectPath: string, version: number): Promise<v
 /**
  * Check if RC files need regeneration
  */
-export async function needsRegeneration(projectPath: string, theme: ThemeMode): Promise<boolean> {
+export async function needsRegeneration(
+  projectPath: string,
+  theme: ThemeMode,
+  config: TerminalConfig
+): Promise<boolean> {
   const currentVersion = await checkRcFileVersion(projectPath);
 
   // Regenerate if version doesn't match or files don't exist
   if (currentVersion !== RC_FILE_VERSION) {
+    return true;
+  }
+
+  const expectedSignature = buildConfigSignature(theme, config);
+  const existingSignature = await readSignatureFile(projectPath);
+  if (!existingSignature || existingSignature !== expectedSignature) {
     return true;
   }
 
@@ -195,6 +249,10 @@ export async function writeRcFiles(
 
   // Write version file
   await writeVersionFile(projectPath, RC_FILE_VERSION);
+
+  // Write config signature for change detection
+  const signature = buildConfigSignature(theme, config);
+  await writeSignatureFile(projectPath, signature);
 }
 
 /**
@@ -207,7 +265,7 @@ export async function ensureRcFilesUpToDate(
   themeColors: TerminalTheme,
   allThemes: Record<ThemeMode, TerminalTheme>
 ): Promise<void> {
-  const needsRegen = await needsRegeneration(projectPath, theme);
+  const needsRegen = await needsRegeneration(projectPath, theme, config);
   if (needsRegen) {
     await writeRcFiles(projectPath, theme, config, themeColors, allThemes);
   }
