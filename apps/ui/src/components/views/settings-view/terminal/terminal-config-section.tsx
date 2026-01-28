@@ -24,9 +24,11 @@ import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
 import { toast } from 'sonner';
 import { PromptPreview } from './prompt-preview';
+import { useUpdateGlobalSettings } from '@/hooks/mutations/use-settings-mutations';
 
 export function TerminalConfigSection() {
-  const { theme, globalSettings, updateGlobalSettings } = useAppStore();
+  const { theme, globalSettings } = useAppStore();
+  const updateGlobalSettings = useUpdateGlobalSettings({ showSuccessToast: false });
   const [localEnvVars, setLocalEnvVars] = useState<Array<{ key: string; value: string }>>(
     Object.entries(globalSettings?.terminalConfig?.customEnvVars || {}).map(([key, value]) => ({
       key,
@@ -59,43 +61,45 @@ export function TerminalConfigSection() {
       if (!confirmed) return;
     }
 
-    try {
-      // Ensure all required fields are present
-      const updatedConfig = {
-        enabled,
-        customPrompt: terminalConfig.customPrompt,
-        promptFormat: terminalConfig.promptFormat,
-        showGitBranch: terminalConfig.showGitBranch,
-        showGitStatus: terminalConfig.showGitStatus,
-        customAliases: terminalConfig.customAliases,
-        customEnvVars: terminalConfig.customEnvVars,
-        rcFileVersion: 1,
-      };
+    // Ensure all required fields are present
+    const updatedConfig = {
+      enabled,
+      customPrompt: terminalConfig.customPrompt,
+      promptFormat: terminalConfig.promptFormat,
+      showGitBranch: terminalConfig.showGitBranch,
+      showGitStatus: terminalConfig.showGitStatus,
+      customAliases: terminalConfig.customAliases,
+      customEnvVars: terminalConfig.customEnvVars,
+      rcFileVersion: 1,
+    };
 
-      console.log('[TerminalConfig] Updating settings with:', updatedConfig);
+    console.log('[TerminalConfig] Updating settings with:', updatedConfig);
 
-      await updateGlobalSettings({
-        terminalConfig: updatedConfig,
-      });
-
-      toast.success(
-        enabled ? 'Custom terminal configs enabled' : 'Custom terminal configs disabled',
-        {
-          description: enabled
-            ? 'New terminals will use custom prompts'
-            : '.automaker/terminal/ will be cleaned up',
-        }
-      );
-    } catch (error) {
-      console.error('[TerminalConfig] Failed to update settings:', error);
-      toast.error('Failed to update terminal config', {
-        description: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
+    updateGlobalSettings.mutate(
+      { terminalConfig: updatedConfig },
+      {
+        onSuccess: () => {
+          toast.success(
+            enabled ? 'Custom terminal configs enabled' : 'Custom terminal configs disabled',
+            {
+              description: enabled
+                ? 'New terminals will use custom prompts'
+                : '.automaker/terminal/ will be cleaned up',
+            }
+          );
+        },
+        onError: (error) => {
+          console.error('[TerminalConfig] Failed to update settings:', error);
+          toast.error('Failed to update terminal config', {
+            description: error instanceof Error ? error.message : 'Unknown error',
+          });
+        },
+      }
+    );
   };
 
-  const handleUpdateConfig = async (updates: Partial<typeof terminalConfig>) => {
-    await updateGlobalSettings({
+  const handleUpdateConfig = (updates: Partial<typeof terminalConfig>) => {
+    updateGlobalSettings.mutate({
       terminalConfig: {
         ...terminalConfig,
         ...updates,
