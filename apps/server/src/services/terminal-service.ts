@@ -47,6 +47,8 @@ const DEFAULT_CUSTOM_PROMPT = true;
 const DEFAULT_PROMPT_FORMAT: TerminalConfig['promptFormat'] = 'standard';
 const DEFAULT_SHOW_GIT_BRANCH = true;
 const DEFAULT_SHOW_GIT_STATUS = true;
+const DEFAULT_CUSTOM_ALIASES = '';
+const DEFAULT_CUSTOM_ENV_VARS: Record<string, string> = {};
 const PROMPT_THEME_CUSTOM = 'custom';
 const PROMPT_THEME_PREFIX = 'omp-';
 const OMP_THEME_ENV_VAR = 'AUTOMAKER_OMP_THEME';
@@ -103,6 +105,22 @@ function normalizePathDepth(pathDepth: number | undefined): number {
   return Math.max(DEFAULT_PATH_DEPTH, Math.floor(depth));
 }
 
+function getShellBasename(shellPath: string): string {
+  const lastSep = Math.max(shellPath.lastIndexOf('/'), shellPath.lastIndexOf('\\'));
+  return lastSep >= 0 ? shellPath.slice(lastSep + 1) : shellPath;
+}
+
+function getShellArgsForPath(shellPath: string): string[] {
+  const shellName = getShellBasename(shellPath).toLowerCase().replace('.exe', '');
+  if (shellName === 'powershell' || shellName === 'pwsh' || shellName === 'cmd') {
+    return [];
+  }
+  if (shellName === SHELL_NAME_SH) {
+    return [];
+  }
+  return [BASH_LOGIN_ARG];
+}
+
 function resolveOmpThemeName(promptTheme: string | undefined): string | null {
   if (!promptTheme || promptTheme === PROMPT_THEME_CUSTOM) {
     return null;
@@ -111,6 +129,54 @@ function resolveOmpThemeName(promptTheme: string | undefined): string | null {
     return promptTheme.slice(PROMPT_THEME_PREFIX.length);
   }
   return null;
+}
+
+function buildEffectiveTerminalConfig(
+  globalTerminalConfig: TerminalConfig | undefined,
+  projectTerminalConfig: Partial<TerminalConfig> | undefined
+): TerminalConfig {
+  const mergedEnvVars = {
+    ...(globalTerminalConfig?.customEnvVars ?? DEFAULT_CUSTOM_ENV_VARS),
+    ...(projectTerminalConfig?.customEnvVars ?? DEFAULT_CUSTOM_ENV_VARS),
+  };
+
+  return {
+    enabled: projectTerminalConfig?.enabled ?? globalTerminalConfig?.enabled ?? false,
+    customPrompt: globalTerminalConfig?.customPrompt ?? DEFAULT_CUSTOM_PROMPT,
+    promptFormat: globalTerminalConfig?.promptFormat ?? DEFAULT_PROMPT_FORMAT,
+    showGitBranch:
+      projectTerminalConfig?.showGitBranch ??
+      globalTerminalConfig?.showGitBranch ??
+      DEFAULT_SHOW_GIT_BRANCH,
+    showGitStatus:
+      projectTerminalConfig?.showGitStatus ??
+      globalTerminalConfig?.showGitStatus ??
+      DEFAULT_SHOW_GIT_STATUS,
+    showUserHost:
+      projectTerminalConfig?.showUserHost ??
+      globalTerminalConfig?.showUserHost ??
+      DEFAULT_SHOW_USER_HOST,
+    showPath:
+      projectTerminalConfig?.showPath ?? globalTerminalConfig?.showPath ?? DEFAULT_SHOW_PATH,
+    pathStyle: normalizePathStyle(
+      projectTerminalConfig?.pathStyle ?? globalTerminalConfig?.pathStyle
+    ),
+    pathDepth: normalizePathDepth(
+      projectTerminalConfig?.pathDepth ?? globalTerminalConfig?.pathDepth
+    ),
+    showTime:
+      projectTerminalConfig?.showTime ?? globalTerminalConfig?.showTime ?? DEFAULT_SHOW_TIME,
+    showExitStatus:
+      projectTerminalConfig?.showExitStatus ??
+      globalTerminalConfig?.showExitStatus ??
+      DEFAULT_SHOW_EXIT_STATUS,
+    customAliases:
+      projectTerminalConfig?.customAliases ??
+      globalTerminalConfig?.customAliases ??
+      DEFAULT_CUSTOM_ALIASES,
+    customEnvVars: mergedEnvVars,
+    rcFileVersion: globalTerminalConfig?.rcFileVersion,
+  };
 }
 
 export interface TerminalSession {
@@ -179,37 +245,19 @@ export class TerminalService extends EventEmitter {
     const platform = os.platform();
     const shellPaths = getShellPaths();
 
-    // Helper to get basename handling both path separators
-    const getBasename = (shellPath: string): string => {
-      const lastSep = Math.max(shellPath.lastIndexOf('/'), shellPath.lastIndexOf('\\'));
-      return lastSep >= 0 ? shellPath.slice(lastSep + 1) : shellPath;
-    };
-
-    // Helper to get shell args based on shell name
-    const getShellArgs = (shell: string): string[] => {
-      const shellName = getBasename(shell).toLowerCase().replace('.exe', '');
-      // PowerShell and cmd don't need --login
-      if (shellName === 'powershell' || shellName === 'pwsh' || shellName === 'cmd') {
-        return [];
-      }
-      // sh doesn't support --login in all implementations
-      if (shellName === SHELL_NAME_SH) {
-        return [];
-      }
-      // bash, zsh, and other POSIX shells support --login
-      return [BASH_LOGIN_ARG];
-    };
-
     // Check if running in WSL - prefer user's shell or bash with --login
     if (platform === 'linux' && this.isWSL()) {
       const userShell = process.env.SHELL;
       if (userShell) {
         // Try to find userShell in allowed paths
         for (const allowedShell of shellPaths) {
-          if (allowedShell === userShell || getBasename(allowedShell) === getBasename(userShell)) {
+          if (
+            allowedShell === userShell ||
+            getShellBasename(allowedShell) === getShellBasename(userShell)
+          ) {
             try {
               if (systemPathExists(allowedShell)) {
-                return { shell: allowedShell, args: getShellArgs(allowedShell) };
+                return { shell: allowedShell, args: getShellArgsForPath(allowedShell) };
               }
             } catch {
               // Path not allowed, continue searching
@@ -221,7 +269,7 @@ export class TerminalService extends EventEmitter {
       for (const shell of shellPaths) {
         try {
           if (systemPathExists(shell)) {
-            return { shell, args: getShellArgs(shell) };
+            return { shell, args: getShellArgsForPath(shell) };
           }
         } catch {
           // Path not allowed, continue
@@ -235,10 +283,13 @@ export class TerminalService extends EventEmitter {
     if (userShell && platform !== 'win32') {
       // Try to find userShell in allowed paths
       for (const allowedShell of shellPaths) {
-        if (allowedShell === userShell || getBasename(allowedShell) === getBasename(userShell)) {
+        if (
+          allowedShell === userShell ||
+          getShellBasename(allowedShell) === getShellBasename(userShell)
+        ) {
           try {
             if (systemPathExists(allowedShell)) {
-              return { shell: allowedShell, args: getShellArgs(allowedShell) };
+              return { shell: allowedShell, args: getShellArgsForPath(allowedShell) };
             }
           } catch {
             // Path not allowed, continue searching
@@ -251,7 +302,7 @@ export class TerminalService extends EventEmitter {
     for (const shell of shellPaths) {
       try {
         if (systemPathExists(shell)) {
-          return { shell, args: getShellArgs(shell) };
+          return { shell, args: getShellArgsForPath(shell) };
         }
       } catch {
         // Path not allowed or doesn't exist, continue to next
@@ -392,7 +443,7 @@ export class TerminalService extends EventEmitter {
 
     const { shell: detectedShell, args: detectedShellArgs } = this.detectShell();
     const shell = options.shell || detectedShell;
-    let shellArgs = [...detectedShellArgs];
+    let shellArgs = options.shell ? getShellArgsForPath(shell) : [...detectedShellArgs];
 
     // Validate and resolve working directory
     // Uses secureFs internally to enforce ALLOWED_ROOT_DIRECTORY
@@ -422,51 +473,27 @@ export class TerminalService extends EventEmitter {
           ? await this.settingsService.getProjectSettings(options.cwd)
           : null;
 
-        // Merge global and project terminal configs
         const globalTerminalConfig = globalSettings?.terminalConfig;
         const projectTerminalConfig = projectSettings?.terminalConfig;
+        const effectiveConfig = buildEffectiveTerminalConfig(
+          globalTerminalConfig,
+          projectTerminalConfig
+        );
 
         logger.info(
           `[createSession] Terminal config: global.enabled=${globalTerminalConfig?.enabled}, project.enabled=${projectTerminalConfig?.enabled}`
         );
+        logger.info(
+          `[createSession] Terminal config effective enabled: ${effectiveConfig.enabled}`
+        );
 
-        // Determine if terminal config is enabled
-        const enabled =
-          projectTerminalConfig?.enabled !== undefined
-            ? projectTerminalConfig.enabled
-            : globalTerminalConfig?.enabled || false;
-
-        logger.info(`[createSession] Terminal config effective enabled: ${enabled}`);
-
-        if (enabled && globalTerminalConfig) {
+        if (effectiveConfig.enabled && globalTerminalConfig) {
           const currentTheme = globalSettings?.theme || 'dark';
           const themeColors = getTerminalThemeColors(currentTheme);
           const allThemes = getAllTerminalThemes();
           const promptTheme =
-            projectTerminalConfig?.promptTheme || globalTerminalConfig.promptTheme;
+            projectTerminalConfig?.promptTheme ?? globalTerminalConfig.promptTheme;
           const ompThemeName = resolveOmpThemeName(promptTheme);
-
-          // Full config object (global + project overrides)
-          const effectiveConfig: TerminalConfig = {
-            enabled: true,
-            customPrompt: globalTerminalConfig.customPrompt ?? DEFAULT_CUSTOM_PROMPT,
-            promptFormat: globalTerminalConfig.promptFormat ?? DEFAULT_PROMPT_FORMAT,
-            showGitBranch: globalTerminalConfig.showGitBranch ?? DEFAULT_SHOW_GIT_BRANCH,
-            showGitStatus: globalTerminalConfig.showGitStatus ?? DEFAULT_SHOW_GIT_STATUS,
-            showUserHost: globalTerminalConfig.showUserHost ?? DEFAULT_SHOW_USER_HOST,
-            showPath: globalTerminalConfig.showPath ?? DEFAULT_SHOW_PATH,
-            pathStyle: normalizePathStyle(globalTerminalConfig.pathStyle),
-            pathDepth: normalizePathDepth(globalTerminalConfig.pathDepth),
-            showTime: globalTerminalConfig.showTime ?? DEFAULT_SHOW_TIME,
-            showExitStatus: globalTerminalConfig.showExitStatus ?? DEFAULT_SHOW_EXIT_STATUS,
-            customAliases:
-              projectTerminalConfig?.customAliases || globalTerminalConfig.customAliases,
-            customEnvVars: {
-              ...globalTerminalConfig.customEnvVars,
-              ...projectTerminalConfig?.customEnvVars,
-            },
-            rcFileVersion: globalTerminalConfig.rcFileVersion,
-          };
 
           // Ensure RC files are up to date
           await ensureRcFilesUpToDate(
@@ -478,7 +505,7 @@ export class TerminalService extends EventEmitter {
           );
 
           // Set shell-specific env vars
-          const shellName = path.basename(shell).toLowerCase();
+          const shellName = getShellBasename(shell).toLowerCase();
           if (ompThemeName && effectiveConfig.customPrompt) {
             terminalConfigEnv[OMP_THEME_ENV_VAR] = ompThemeName;
           }
@@ -850,31 +877,17 @@ export class TerminalService extends EventEmitter {
     try {
       const globalSettings = await this.settingsService.getGlobalSettings();
       const terminalConfig = globalSettings?.terminalConfig;
+      const projectSettings = await this.settingsService.getProjectSettings(projectPath);
+      const projectTerminalConfig = projectSettings?.terminalConfig;
+      const effectiveConfig = buildEffectiveTerminalConfig(terminalConfig, projectTerminalConfig);
 
-      if (terminalConfig?.enabled) {
+      if (effectiveConfig.enabled && terminalConfig) {
         const themeColors = getTerminalThemeColors(
           newTheme as import('@automaker/types').ThemeMode
         );
         const allThemes = getAllTerminalThemes();
 
         // Regenerate RC files with new theme
-        const effectiveConfig: TerminalConfig = {
-          enabled: true,
-          customPrompt: terminalConfig.customPrompt ?? DEFAULT_CUSTOM_PROMPT,
-          promptFormat: terminalConfig.promptFormat ?? DEFAULT_PROMPT_FORMAT,
-          showGitBranch: terminalConfig.showGitBranch ?? DEFAULT_SHOW_GIT_BRANCH,
-          showGitStatus: terminalConfig.showGitStatus ?? DEFAULT_SHOW_GIT_STATUS,
-          showUserHost: terminalConfig.showUserHost ?? DEFAULT_SHOW_USER_HOST,
-          showPath: terminalConfig.showPath ?? DEFAULT_SHOW_PATH,
-          pathStyle: normalizePathStyle(terminalConfig.pathStyle),
-          pathDepth: normalizePathDepth(terminalConfig.pathDepth),
-          showTime: terminalConfig.showTime ?? DEFAULT_SHOW_TIME,
-          showExitStatus: terminalConfig.showExitStatus ?? DEFAULT_SHOW_EXIT_STATUS,
-          customAliases: terminalConfig.customAliases,
-          customEnvVars: terminalConfig.customEnvVars,
-          rcFileVersion: terminalConfig.rcFileVersion,
-        };
-
         await ensureRcFilesUpToDate(
           projectPath,
           newTheme as import('@automaker/types').ThemeMode,

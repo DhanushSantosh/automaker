@@ -6,7 +6,7 @@
  * in .automaker/terminal/ without modifying user's existing RC files.
  */
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
@@ -39,14 +39,31 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 export function TerminalConfigSection() {
   const PATH_DEPTH_MIN = 0;
   const PATH_DEPTH_MAX = 10;
+  const ENV_VAR_UPDATE_DEBOUNCE_MS = 400;
+  const ENV_VAR_ID_PREFIX = 'env';
+  const TERMINAL_RC_FILE_VERSION = 11;
   const { theme } = useAppStore();
   const { data: globalSettings } = useGlobalSettings();
   const updateGlobalSettings = useUpdateGlobalSettings({ showSuccessToast: false });
-  const [localEnvVars, setLocalEnvVars] = useState<Array<{ key: string; value: string }>>(
-    Object.entries(globalSettings?.terminalConfig?.customEnvVars || {}).map(([key, value]) => ({
-      key,
-      value,
-    }))
+  const envVarIdRef = useRef(0);
+  const envVarUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const createEnvVarEntry = useCallback(
+    (key = '', value = '') => {
+      envVarIdRef.current += 1;
+      return {
+        id: `${ENV_VAR_ID_PREFIX}-${envVarIdRef.current}`,
+        key,
+        value,
+      };
+    },
+    [ENV_VAR_ID_PREFIX]
+  );
+  const [localEnvVars, setLocalEnvVars] = useState<
+    Array<{ id: string; key: string; value: string }>
+  >(() =>
+    Object.entries(globalSettings?.terminalConfig?.customEnvVars || {}).map(([key, value]) =>
+      createEnvVarEntry(key, value)
+    )
   );
   const [showEnableConfirm, setShowEnableConfirm] = useState(false);
 
@@ -119,7 +136,7 @@ export function TerminalConfigSection() {
       promptTheme: terminalConfig.promptTheme ?? PROMPT_THEME_CUSTOM_ID,
       customAliases: terminalConfig.customAliases,
       customEnvVars: terminalConfig.customEnvVars,
-      rcFileVersion: 1,
+      rcFileVersion: TERMINAL_RC_FILE_VERSION,
     };
 
     updateGlobalSettings.mutate(
@@ -145,6 +162,22 @@ export function TerminalConfigSection() {
     );
   };
 
+  useEffect(() => {
+    setLocalEnvVars(
+      Object.entries(globalSettings?.terminalConfig?.customEnvVars || {}).map(([key, value]) =>
+        createEnvVarEntry(key, value)
+      )
+    );
+  }, [createEnvVarEntry, globalSettings?.terminalConfig?.customEnvVars]);
+
+  useEffect(() => {
+    return () => {
+      if (envVarUpdateTimeoutRef.current) {
+        clearTimeout(envVarUpdateTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleToggleEnabled = async (enabled: boolean) => {
     if (enabled) {
       setShowEnableConfirm(true);
@@ -157,13 +190,32 @@ export function TerminalConfigSection() {
   const handleUpdateConfig = (updates: Partial<typeof terminalConfig>) => {
     const nextPromptTheme = updates.promptTheme ?? PROMPT_THEME_CUSTOM_ID;
 
-    updateGlobalSettings.mutate({
-      terminalConfig: {
-        ...terminalConfig,
-        ...updates,
-        promptTheme: nextPromptTheme,
+    updateGlobalSettings.mutate(
+      {
+        terminalConfig: {
+          ...terminalConfig,
+          ...updates,
+          promptTheme: nextPromptTheme,
+        },
       },
-    });
+      {
+        onError: (error) => {
+          console.error('[TerminalConfig] Failed to update settings:', error);
+          toast.error('Failed to update terminal config', {
+            description: error instanceof Error ? error.message : 'Unknown error',
+          });
+        },
+      }
+    );
+  };
+
+  const scheduleEnvVarsUpdate = (envVarsObject: Record<string, string>) => {
+    if (envVarUpdateTimeoutRef.current) {
+      clearTimeout(envVarUpdateTimeoutRef.current);
+    }
+    envVarUpdateTimeoutRef.current = setTimeout(() => {
+      handleUpdateConfig({ customEnvVars: envVarsObject });
+    }, ENV_VAR_UPDATE_DEBOUNCE_MS);
   };
 
   const handlePromptThemeChange = (themeId: string) => {
@@ -185,11 +237,11 @@ export function TerminalConfigSection() {
   };
 
   const addEnvVar = () => {
-    setLocalEnvVars([...localEnvVars, { key: '', value: '' }]);
+    setLocalEnvVars([...localEnvVars, createEnvVarEntry()]);
   };
 
-  const removeEnvVar = (index: number) => {
-    const newVars = localEnvVars.filter((_, i) => i !== index);
+  const removeEnvVar = (id: string) => {
+    const newVars = localEnvVars.filter((envVar) => envVar.id !== id);
     setLocalEnvVars(newVars);
 
     // Update settings
@@ -201,12 +253,13 @@ export function TerminalConfigSection() {
       {} as Record<string, string>
     );
 
-    handleUpdateConfig({ customEnvVars: envVarsObject });
+    scheduleEnvVarsUpdate(envVarsObject);
   };
 
-  const updateEnvVar = (index: number, field: 'key' | 'value', newValue: string) => {
-    const newVars = [...localEnvVars];
-    newVars[index][field] = newValue;
+  const updateEnvVar = (id: string, field: 'key' | 'value', newValue: string) => {
+    const newVars = localEnvVars.map((envVar) =>
+      envVar.id === id ? { ...envVar, [field]: newValue } : envVar
+    );
     setLocalEnvVars(newVars);
 
     // Validate and update settings (only if key is valid)
@@ -221,7 +274,7 @@ export function TerminalConfigSection() {
       {} as Record<string, string>
     );
 
-    handleUpdateConfig({ customEnvVars: envVarsObject });
+    scheduleEnvVarsUpdate(envVarsObject);
   };
 
   return (
@@ -548,11 +601,11 @@ export function TerminalConfigSection() {
 
               {localEnvVars.length > 0 && (
                 <div className="space-y-2">
-                  {localEnvVars.map((envVar, index) => (
-                    <div key={index} className="flex gap-2 items-start">
+                  {localEnvVars.map((envVar) => (
+                    <div key={envVar.id} className="flex gap-2 items-start">
                       <Input
                         value={envVar.key}
-                        onChange={(e) => updateEnvVar(index, 'key', e.target.value)}
+                        onChange={(e) => updateEnvVar(envVar.id, 'key', e.target.value)}
                         placeholder="VAR_NAME"
                         className={cn(
                           'font-mono text-sm flex-1',
@@ -563,14 +616,14 @@ export function TerminalConfigSection() {
                       />
                       <Input
                         value={envVar.value}
-                        onChange={(e) => updateEnvVar(index, 'value', e.target.value)}
+                        onChange={(e) => updateEnvVar(envVar.id, 'value', e.target.value)}
                         placeholder="value"
                         className="font-mono text-sm flex-[2]"
                       />
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => removeEnvVar(index)}
+                        onClick={() => removeEnvVar(envVar.id)}
                         className="h-9 w-9 p-0 text-muted-foreground hover:text-destructive"
                       >
                         <X className="w-4 h-4" />

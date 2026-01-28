@@ -147,7 +147,7 @@ export async function needsRegeneration(
 - Create `.automaker/terminal/` if doesn't exist
 - Write RC files with 0644 permissions
 - Write theme color files (40 themes × 1 file each)
-- Create version.txt with format version (currently "10")
+- Create version.txt with format version (currently "11")
 - Support atomic writes (write to temp, then rename)
 
 ### Step 3: Add Settings Schema
@@ -264,7 +264,7 @@ const DEFAULT_TERMINAL_CONFIG = {
   showExitStatus: false,
   customAliases: '',
   customEnvVars: {},
-  rcFileVersion: 1,
+  rcFileVersion: 11,
 };
 ```
 
@@ -474,7 +474,7 @@ user@host in ~/path on main*
 1. User toggles "Enable Custom Terminal Configs"
 2. Show confirmation dialog explaining what will happen
 3. Generate RC files for current theme
-4. Set `rcFileVersion: 1` in settings
+4. Set `rcFileVersion: 11` in settings
 
 ### On Theme Change
 

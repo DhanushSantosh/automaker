@@ -107,7 +107,7 @@ export function PromptPreview({
     const gitInfo = branch ? ` (${branch}${dirty})` : '';
 
     switch (format) {
-      case 'minimal':
+      case 'minimal': {
         return (
           <div className="font-mono text-sm leading-relaxed">
             {showTime && <span style={{ color: terminalTheme.magenta }}>{time} </span>}
@@ -125,8 +125,9 @@ export function PromptPreview({
             <span className="ml-1 animate-pulse">▊</span>
           </div>
         );
+      }
 
-      case 'powerline':
+      case 'powerline': {
         const powerlineSegments: ReactNode[] = [];
         if (showUserHost) {
           powerlineSegments.push(
@@ -197,8 +198,9 @@ export function PromptPreview({
             </div>
           </div>
         );
+      }
 
-      case 'starship':
+      case 'starship': {
         return (
           <div className="font-mono text-sm leading-relaxed space-y-1">
             <div>
@@ -233,9 +235,10 @@ export function PromptPreview({
             </div>
           </div>
         );
+      }
 
       case 'standard':
-      default:
+      default: {
         return (
           <div className="font-mono text-sm leading-relaxed">
             {showTime && <span style={{ color: terminalTheme.magenta }}>{time} </span>}
@@ -254,6 +257,7 @@ export function PromptPreview({
             <span className="ml-1 animate-pulse">▊</span>
           </div>
         );
+      }
     }
   };
 

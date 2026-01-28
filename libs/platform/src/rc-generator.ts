@@ -902,6 +902,9 @@ if [ -f "\${ZDOTDIR:-\${0:a:h}}/common.sh" ]; then
     source "\${ZDOTDIR:-\${0:a:h}}/common.sh"
 fi
 
+# Enable command substitution in PROMPT
+setopt PROMPT_SUBST
+
 # Show Automaker banner on shell start
 if command -v automaker_show_banner_once >/dev/null 2>&1; then
     automaker_show_banner_once
