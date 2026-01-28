@@ -25,9 +25,11 @@ import { useAppStore } from '@/store/app-store';
 import { toast } from 'sonner';
 import { PromptPreview } from './prompt-preview';
 import { useUpdateGlobalSettings } from '@/hooks/mutations/use-settings-mutations';
+import { useGlobalSettings } from '@/hooks/queries/use-settings';
 
 export function TerminalConfigSection() {
-  const { theme, globalSettings } = useAppStore();
+  const { theme } = useAppStore();
+  const { data: globalSettings } = useGlobalSettings();
   const updateGlobalSettings = useUpdateGlobalSettings({ showSuccessToast: false });
   const [localEnvVars, setLocalEnvVars] = useState<Array<{ key: string; value: string }>>(
     Object.entries(globalSettings?.terminalConfig?.customEnvVars || {}).map(([key, value]) => ({
