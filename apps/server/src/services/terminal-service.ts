@@ -350,6 +350,9 @@ export class TerminalService extends EventEmitter {
     const terminalConfigEnv: Record<string, string> = {};
     if (this.settingsService) {
       try {
+        logger.info(
+          `[createSession] Checking terminal config for session ${id}, cwd: ${options.cwd || cwd}`
+        );
         const globalSettings = await this.settingsService.getGlobalSettings();
         const projectSettings = options.cwd
           ? await this.settingsService.getProjectSettings(options.cwd)
@@ -359,11 +362,17 @@ export class TerminalService extends EventEmitter {
         const globalTerminalConfig = globalSettings?.terminalConfig;
         const projectTerminalConfig = projectSettings?.terminalConfig;
 
+        logger.info(
+          `[createSession] Terminal config: global.enabled=${globalTerminalConfig?.enabled}, project.enabled=${projectTerminalConfig?.enabled}`
+        );
+
         // Determine if terminal config is enabled
         const enabled =
           projectTerminalConfig?.enabled !== undefined
             ? projectTerminalConfig.enabled
             : globalTerminalConfig?.enabled || false;
+
+        logger.info(`[createSession] Terminal config effective enabled: ${enabled}`);
 
         if (enabled && globalTerminalConfig) {
           const currentTheme = globalSettings?.theme || 'dark';
