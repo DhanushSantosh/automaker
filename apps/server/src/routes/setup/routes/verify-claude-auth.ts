@@ -320,9 +320,28 @@ export function createVerifyClaudeAuthHandler() {
         authMethod,
       });
 
+      // Determine specific auth type for success messages
+      let authType: 'oauth' | 'api_key' | 'cli' | undefined;
+      if (authenticated) {
+        if (authMethod === 'api_key') {
+          authType = 'api_key';
+        } else if (authMethod === 'cli') {
+          // Check if CLI auth is via OAuth (Claude Code subscription) or generic CLI
+          // OAuth tokens are stored in the credentials file by the Claude CLI
+          const { getClaudeAuthIndicators } = await import('@automaker/platform');
+          const indicators = await getClaudeAuthIndicators();
+          if (indicators.credentials?.hasOAuthToken) {
+            authType = 'oauth';
+          } else {
+            authType = 'cli';
+          }
+        }
+      }
+
       res.json({
         success: true,
         authenticated,
+        authType,
         error: errorMessage || undefined,
       });
     } catch (error) {

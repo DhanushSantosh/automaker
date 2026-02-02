@@ -977,6 +977,27 @@ export async function findGitBashPath(): Promise<string | null> {
 }
 
 /**
+ * Details about a file check performed during auth detection
+ */
+export interface FileCheckResult {
+  path: string;
+  exists: boolean;
+  readable: boolean;
+  error?: string;
+}
+
+/**
+ * Details about a directory check performed during auth detection
+ */
+export interface DirectoryCheckResult {
+  path: string;
+  exists: boolean;
+  readable: boolean;
+  entryCount: number;
+  error?: string;
+}
+
+/**
  * Get Claude authentication status by checking various indicators
  */
 export interface ClaudeAuthIndicators {
@@ -988,67 +1009,144 @@ export interface ClaudeAuthIndicators {
     hasOAuthToken: boolean;
     hasApiKey: boolean;
   } | null;
+  /** Detailed information about what was checked */
+  checks: {
+    settingsFile: FileCheckResult;
+    statsCache: FileCheckResult & { hasDailyActivity?: boolean };
+    projectsDir: DirectoryCheckResult;
+    credentialFiles: FileCheckResult[];
+  };
 }
 
 export async function getClaudeAuthIndicators(): Promise<ClaudeAuthIndicators> {
+  const settingsPath = getClaudeSettingsPath();
+  const statsCachePath = getClaudeStatsCachePath();
+  const projectsDir = getClaudeProjectsDir();
+  const credentialPaths = getClaudeCredentialPaths();
+
+  // Initialize checks with paths
+  const settingsFileCheck: FileCheckResult = {
+    path: settingsPath,
+    exists: false,
+    readable: false,
+  };
+
+  const statsCacheCheck: FileCheckResult & { hasDailyActivity?: boolean } = {
+    path: statsCachePath,
+    exists: false,
+    readable: false,
+  };
+
+  const projectsDirCheck: DirectoryCheckResult = {
+    path: projectsDir,
+    exists: false,
+    readable: false,
+    entryCount: 0,
+  };
+
+  const credentialFileChecks: FileCheckResult[] = credentialPaths.map((p) => ({
+    path: p,
+    exists: false,
+    readable: false,
+  }));
+
   const result: ClaudeAuthIndicators = {
     hasCredentialsFile: false,
     hasSettingsFile: false,
     hasStatsCacheWithActivity: false,
     hasProjectsSessions: false,
     credentials: null,
+    checks: {
+      settingsFile: settingsFileCheck,
+      statsCache: statsCacheCheck,
+      projectsDir: projectsDirCheck,
+      credentialFiles: credentialFileChecks,
+    },
   };
 
   // Check settings file
   try {
-    if (await systemPathAccess(getClaudeSettingsPath())) {
+    if (await systemPathAccess(settingsPath)) {
+      settingsFileCheck.exists = true;
+      settingsFileCheck.readable = true;
       result.hasSettingsFile = true;
     }
-  } catch {
-    // Ignore errors
+  } catch (err) {
+    settingsFileCheck.error = err instanceof Error ? err.message : String(err);
   }
 
   // Check stats cache for recent activity
   try {
-    const statsContent = await systemPathReadFile(getClaudeStatsCachePath());
-    const stats = JSON.parse(statsContent);
-    if (stats.dailyActivity && stats.dailyActivity.length > 0) {
-      result.hasStatsCacheWithActivity = true;
+    const statsContent = await systemPathReadFile(statsCachePath);
+    statsCacheCheck.exists = true;
+    statsCacheCheck.readable = true;
+    try {
+      const stats = JSON.parse(statsContent);
+      if (stats.dailyActivity && stats.dailyActivity.length > 0) {
+        statsCacheCheck.hasDailyActivity = true;
+        result.hasStatsCacheWithActivity = true;
+      } else {
+        statsCacheCheck.hasDailyActivity = false;
+      }
+    } catch (parseErr) {
+      statsCacheCheck.error = `JSON parse error: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`;
     }
-  } catch {
-    // Ignore errors
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      statsCacheCheck.exists = false;
+    } else {
+      statsCacheCheck.error = err instanceof Error ? err.message : String(err);
+    }
   }
 
   // Check for sessions in projects directory
   try {
-    const sessions = await systemPathReaddir(getClaudeProjectsDir());
+    const sessions = await systemPathReaddir(projectsDir);
+    projectsDirCheck.exists = true;
+    projectsDirCheck.readable = true;
+    projectsDirCheck.entryCount = sessions.length;
     if (sessions.length > 0) {
       result.hasProjectsSessions = true;
     }
-  } catch {
-    // Ignore errors
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      projectsDirCheck.exists = false;
+    } else {
+      projectsDirCheck.error = err instanceof Error ? err.message : String(err);
+    }
   }
 
   // Check credentials files
-  const credentialPaths = getClaudeCredentialPaths();
-  for (const credPath of credentialPaths) {
+  for (let i = 0; i < credentialPaths.length; i++) {
+    const credPath = credentialPaths[i];
+    const credCheck = credentialFileChecks[i];
     try {
       const content = await systemPathReadFile(credPath);
-      const credentials = JSON.parse(content);
-      result.hasCredentialsFile = true;
-      // Support multiple credential formats:
-      // 1. Claude Code CLI format: { claudeAiOauth: { accessToken, refreshToken } }
-      // 2. Legacy format: { oauth_token } or { access_token }
-      // 3. API key format: { api_key }
-      const hasClaudeOauth = !!credentials.claudeAiOauth?.accessToken;
-      const hasLegacyOauth = !!(credentials.oauth_token || credentials.access_token);
-      result.credentials = {
-        hasOAuthToken: hasClaudeOauth || hasLegacyOauth,
-        hasApiKey: !!credentials.api_key,
-      };
-      break;
-    } catch {
-      // Continue to next path
+      credCheck.exists = true;
+      credCheck.readable = true;
+      try {
+        const credentials = JSON.parse(content);
+        result.hasCredentialsFile = true;
+        // Support multiple credential formats:
+        // 1. Claude Code CLI format: { claudeAiOauth: { accessToken, refreshToken } }
+        // 2. Legacy format: { oauth_token } or { access_token }
+        // 3. API key format: { api_key }
+        const hasClaudeOauth = !!credentials.claudeAiOauth?.accessToken;
+        const hasLegacyOauth = !!(credentials.oauth_token || credentials.access_token);
+        result.credentials = {
+          hasOAuthToken: hasClaudeOauth || hasLegacyOauth,
+          hasApiKey: !!credentials.api_key,
+        };
+        break;
+      } catch (parseErr) {
+        credCheck.error = `JSON parse error: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`;
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        credCheck.exists = false;
+      } else {
+        credCheck.error = err instanceof Error ? err.message : String(err);
+      }
     }
   }
 

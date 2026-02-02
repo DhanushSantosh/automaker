@@ -1442,6 +1442,7 @@ interface SetupAPI {
   verifyClaudeAuth: (authMethod?: 'cli' | 'api_key') => Promise<{
     success: boolean;
     authenticated: boolean;
+    authType?: 'oauth' | 'api_key' | 'cli';
     error?: string;
   }>;
   getGhStatus?: () => Promise<{
