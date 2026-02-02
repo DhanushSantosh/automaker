@@ -7,8 +7,8 @@
  */
 
 import { execSync } from 'child_process';
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync, readFileSync, lstatSync } from 'fs';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -111,6 +111,21 @@ execSync('npm install --omit=dev', {
     npm_config_workspace: '',
   },
 });
+
+// Step 6b: Replace symlinks for local packages with real copies
+// npm install creates symlinks for file: references, but these break when packaged by electron-builder
+console.log('🔗 Replacing symlinks with real directory copies...');
+const nodeModulesAutomaker = join(BUNDLE_DIR, 'node_modules', '@automaker');
+for (const pkgName of LOCAL_PACKAGES) {
+  const pkgDir = pkgName.replace('@automaker/', '');
+  const nmPkgPath = join(nodeModulesAutomaker, pkgDir);
+  if (existsSync(nmPkgPath) && lstatSync(nmPkgPath).isSymbolicLink()) {
+    const realPath = resolve(BUNDLE_DIR, 'libs', pkgDir);
+    rmSync(nmPkgPath);
+    cpSync(realPath, nmPkgPath, { recursive: true });
+    console.log(`   ✓ Replaced symlink: ${pkgName}`);
+  }
+}
 
 // Step 7: Rebuild native modules for current architecture
 // This is critical for modules like node-pty that have native bindings
