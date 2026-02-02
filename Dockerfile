@@ -118,6 +118,12 @@ RUN curl -fsSL https://opencode.ai/install | bash && \
     echo "=== Checking OpenCode CLI installation ===" && \
     ls -la /home/automaker/.local/bin/ && \
     (which opencode && opencode --version) || echo "opencode installed (may need auth setup)"
+
+# Install Playwright Chromium browser for AI agent verification tests
+# This adds ~300MB to the image but enables automated testing mode out of the box
+RUN npx playwright install chromium && \
+    echo "=== Playwright Chromium installed ===" && \
+    ls -la /home/automaker/.cache/ms-playwright/ || echo "Playwright browsers installed"
 USER root
 
 # Add PATH to profile so it's available in all interactive shells (for login shells)
