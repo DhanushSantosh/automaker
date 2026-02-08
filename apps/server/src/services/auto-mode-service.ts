@@ -3718,13 +3718,14 @@ Format your response as a structured markdown document.`;
           // Recovery cases:
           // 1. Standard pending/ready/backlog statuses
           // 2. Features with approved plans that have incomplete tasks (crash recovery)
-          // 3. Features stuck in 'in_progress' status (crash recovery)
+          // 3. Features stuck in 'in_progress' or 'interrupted' status (crash recovery)
           // 4. Features with 'generating' planSpec status (spec generation was interrupted)
           const needsRecovery =
             feature.status === 'pending' ||
             feature.status === 'ready' ||
             feature.status === 'backlog' ||
             feature.status === 'in_progress' || // Recover features that were in progress when server crashed
+            feature.status === 'interrupted' || // Recover features explicitly marked interrupted on shutdown
             (feature.planSpec?.status === 'approved' &&
               (feature.planSpec.tasksCompleted ?? 0) < (feature.planSpec.tasksTotal ?? 0)) ||
             feature.planSpec?.status === 'generating'; // Recover interrupted spec generation
@@ -3764,7 +3765,7 @@ Format your response as a structured markdown document.`;
 
       const worktreeDesc = branchName ? `worktree ${branchName}` : 'main worktree';
       logger.info(
-        `[loadPendingFeatures] Found ${allFeatures.length} total features, ${pendingFeatures.length} candidates (pending/ready/backlog/in_progress/approved_with_pending_tasks/generating) for ${worktreeDesc}`
+        `[loadPendingFeatures] Found ${allFeatures.length} total features, ${pendingFeatures.length} candidates (pending/ready/backlog/in_progress/interrupted/approved_with_pending_tasks/generating) for ${worktreeDesc}`
       );
 
       if (pendingFeatures.length === 0) {
@@ -5536,9 +5537,10 @@ This mock response was generated because AUTOMAKER_MOCK_AGENT=true was set.
             continue;
           }
 
-          // Check if feature was interrupted (in_progress or pipeline_*)
+          // Check if feature was interrupted (in_progress/interrupted or pipeline_*)
           if (
             feature.status === 'in_progress' ||
+            feature.status === 'interrupted' ||
             (feature.status && feature.status.startsWith('pipeline_'))
           ) {
             // Check if context (agent-output.md) exists
