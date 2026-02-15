@@ -98,3 +98,5 @@ data/
 
 # GSD planning docs (local-only)
 .planning/
+.mcp.json
+.planning
