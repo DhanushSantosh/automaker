@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import type { CodexModelId } from '@automaker/types';
+import { supportsReasoningEffort, type CodexModelId } from '@automaker/types';
 import { OpenAIIcon } from '@/components/ui/provider-icon';
 
 interface CodexModelConfigurationProps {
@@ -161,15 +161,4 @@ export function CodexModelConfiguration({
       </div>
     </div>
   );
-}
-
-function supportsReasoningEffort(modelId: string): boolean {
-  const reasoningModels = [
-    'codex-gpt-5.3-codex',
-    'codex-gpt-5.2-codex',
-    'codex-gpt-5.1-codex-max',
-    'codex-gpt-5.2',
-    'codex-gpt-5.1',
-  ];
-  return reasoningModels.includes(modelId);
 }

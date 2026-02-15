@@ -1297,7 +1297,7 @@ export function PhaseModelSelector({
                 Thinking Level
               </div>
               {getThinkingLevelsForModel(
-                model.mapsToClaudeModel === 'opus' ? 'claude-opus' : ''
+                model.mapsToClaudeModel === 'opus' ? 'claude-opus' : model.id || ''
               ).map((level) => (
                 <button
                   key={level}
@@ -1406,7 +1406,7 @@ export function PhaseModelSelector({
                 Thinking Level
               </div>
               {getThinkingLevelsForModel(
-                model.mapsToClaudeModel === 'opus' ? 'claude-opus' : ''
+                model.mapsToClaudeModel === 'opus' ? 'claude-opus' : model.id || ''
               ).map((level) => (
                 <button
                   key={level}

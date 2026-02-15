@@ -19,7 +19,7 @@ export function ThinkingLevelSelector({
   testIdPrefix = 'thinking-level',
   model,
 }: ThinkingLevelSelectorProps) {
-  const levels = model ? getThinkingLevelsForModel(model) : getThinkingLevelsForModel('');
+  const levels = getThinkingLevelsForModel(model || '');
 
   return (
     <div className="space-y-2 pt-2 border-t border-border">

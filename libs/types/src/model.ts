@@ -101,7 +101,7 @@ export function getAllCodexModelIds(): CodexModelId[] {
 export const DEFAULT_MODELS = {
   claude: 'claude-opus-4-6',
   cursor: 'cursor-auto', // Cursor's recommended default (with prefix)
-  codex: CODEX_MODEL_MAP.gpt52Codex, // GPT-5.2-Codex is the most advanced agentic coding model
+  codex: CODEX_MODEL_MAP.gpt53Codex, // GPT-5.3-Codex is the latest frontier agentic coding model
 } as const;
 
 export type ModelAlias = keyof typeof CLAUDE_MODEL_MAP;

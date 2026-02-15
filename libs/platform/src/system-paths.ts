@@ -26,6 +26,16 @@ import fs from 'fs/promises';
 // =============================================================================
 
 /**
+ * Get NVM for Windows (nvm4w) symlink paths for a given CLI tool.
+ * Reused across getClaudeCliPaths, getCodexCliPaths, and getOpenCodeCliPaths.
+ */
+function getNvmWindowsCliPaths(cliName: string): string[] {
+  const nvmSymlink = process.env.NVM_SYMLINK;
+  if (!nvmSymlink) return [];
+  return [path.join(nvmSymlink, `${cliName}.cmd`), path.join(nvmSymlink, cliName)];
+}
+
+/**
  * Get common paths where GitHub CLI might be installed
  */
 export function getGitHubCliPaths(): string[] {
@@ -54,19 +64,14 @@ export function getClaudeCliPaths(): string[] {
 
   if (isWindows) {
     const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
-    const nvmSymlink = process.env.NVM_SYMLINK;
-    const paths = [
+    return [
       path.join(os.homedir(), '.local', 'bin', 'claude.exe'),
       path.join(appData, 'npm', 'claude.cmd'),
       path.join(appData, 'npm', 'claude'),
       path.join(appData, '.npm-global', 'bin', 'claude.cmd'),
       path.join(appData, '.npm-global', 'bin', 'claude'),
+      ...getNvmWindowsCliPaths('claude'),
     ];
-    // nvm4w (NVM for Windows) symlink path
-    if (nvmSymlink) {
-      paths.push(path.join(nvmSymlink, 'claude.cmd'), path.join(nvmSymlink, 'claude'));
-    }
-    return paths;
   }
 
   return [
@@ -136,8 +141,7 @@ export function getCodexCliPaths(): string[] {
   if (isWindows) {
     const appData = process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming');
     const localAppData = process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local');
-    const nvmSymlink = process.env.NVM_SYMLINK;
-    const paths = [
+    return [
       path.join(homeDir, '.local', 'bin', 'codex.exe'),
       path.join(appData, 'npm', 'codex.cmd'),
       path.join(appData, 'npm', 'codex'),
@@ -148,12 +152,8 @@ export function getCodexCliPaths(): string[] {
       // pnpm on Windows
       path.join(localAppData, 'pnpm', 'codex.cmd'),
       path.join(localAppData, 'pnpm', 'codex'),
+      ...getNvmWindowsCliPaths('codex'),
     ];
-    // nvm4w (NVM for Windows) symlink path
-    if (nvmSymlink) {
-      paths.push(path.join(nvmSymlink, 'codex.cmd'), path.join(nvmSymlink, 'codex'));
-    }
-    return paths;
   }
 
   // Include NVM bin paths for codex installed via npm global under NVM
@@ -1138,8 +1138,7 @@ export function getOpenCodeCliPaths(): string[] {
   if (isWindows) {
     const appData = process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming');
     const localAppData = process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local');
-    const nvmSymlink = process.env.NVM_SYMLINK;
-    const paths = [
+    return [
       // OpenCode's default installation directory
       path.join(homeDir, '.opencode', 'bin', 'opencode.exe'),
       path.join(homeDir, '.local', 'bin', 'opencode.exe'),
@@ -1155,12 +1154,8 @@ export function getOpenCodeCliPaths(): string[] {
       // Go installation (if OpenCode is a Go binary)
       path.join(homeDir, 'go', 'bin', 'opencode.exe'),
       path.join(process.env.GOPATH || path.join(homeDir, 'go'), 'bin', 'opencode.exe'),
+      ...getNvmWindowsCliPaths('opencode'),
     ];
-    // nvm4w (NVM for Windows) symlink path
-    if (nvmSymlink) {
-      paths.push(path.join(nvmSymlink, 'opencode.cmd'), path.join(nvmSymlink, 'opencode'));
-    }
-    return paths;
   }
 
   // Include NVM bin paths for opencode installed via npm global under NVM
