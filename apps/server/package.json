@@ -45,6 +45,7 @@
     "yaml": "2.7.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.57.0",
     "@types/cookie": "0.6.0",
     "@types/cookie-parser": "1.4.10",
     "@types/cors": "2.8.19",
