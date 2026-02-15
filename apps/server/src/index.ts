@@ -148,42 +148,10 @@ const BOX_CONTENT_WIDTH = 67;
     const indicators = cliAuthIndicators;
 
     // Log detailed credential detection results
-    logger.debug('[CREDENTIAL_CHECK] Claude CLI auth indicators:', {
-      hasCredentialsFile: indicators.hasCredentialsFile,
-      hasSettingsFile: indicators.hasSettingsFile,
-      hasStatsCacheWithActivity: indicators.hasStatsCacheWithActivity,
-      hasProjectsSessions: indicators.hasProjectsSessions,
-      credentials: indicators.credentials,
-    });
+    const { checks, ...indicatorSummary } = indicators;
+    logger.debug('[CREDENTIAL_CHECK] Claude CLI auth indicators:', indicatorSummary);
 
-    logger.debug('[CREDENTIAL_CHECK] File check details:', {
-      settingsFile: {
-        path: indicators.checks.settingsFile.path,
-        exists: indicators.checks.settingsFile.exists,
-        readable: indicators.checks.settingsFile.readable,
-        error: indicators.checks.settingsFile.error,
-      },
-      statsCache: {
-        path: indicators.checks.statsCache.path,
-        exists: indicators.checks.statsCache.exists,
-        readable: indicators.checks.statsCache.readable,
-        hasDailyActivity: indicators.checks.statsCache.hasDailyActivity,
-        error: indicators.checks.statsCache.error,
-      },
-      projectsDir: {
-        path: indicators.checks.projectsDir.path,
-        exists: indicators.checks.projectsDir.exists,
-        readable: indicators.checks.projectsDir.readable,
-        entryCount: indicators.checks.projectsDir.entryCount,
-        error: indicators.checks.projectsDir.error,
-      },
-      credentialFiles: indicators.checks.credentialFiles.map((cf) => ({
-        path: cf.path,
-        exists: cf.exists,
-        readable: cf.readable,
-        error: cf.error,
-      })),
-    });
+    logger.debug('[CREDENTIAL_CHECK] File check details:', checks);
 
     const hasCliAuth =
       indicators.hasStatsCacheWithActivity ||
@@ -231,16 +199,10 @@ const BOX_CONTENT_WIDTH = 67;
   if (cliAuthIndicators) {
     const pathsChecked: string[] = [];
 
-    // Collect paths that were checked
-    if (cliAuthIndicators.checks.settingsFile.path) {
-      pathsChecked.push(`Settings: ${cliAuthIndicators.checks.settingsFile.path}`);
-    }
-    if (cliAuthIndicators.checks.statsCache.path) {
-      pathsChecked.push(`Stats cache: ${cliAuthIndicators.checks.statsCache.path}`);
-    }
-    if (cliAuthIndicators.checks.projectsDir.path) {
-      pathsChecked.push(`Projects dir: ${cliAuthIndicators.checks.projectsDir.path}`);
-    }
+    // Collect paths that were checked (paths are always populated strings)
+    pathsChecked.push(`Settings: ${cliAuthIndicators.checks.settingsFile.path}`);
+    pathsChecked.push(`Stats cache: ${cliAuthIndicators.checks.statsCache.path}`);
+    pathsChecked.push(`Projects dir: ${cliAuthIndicators.checks.projectsDir.path}`);
     for (const credFile of cliAuthIndicators.checks.credentialFiles) {
       pathsChecked.push(`Credentials: ${credFile.path}`);
     }
@@ -249,7 +211,7 @@ const BOX_CONTENT_WIDTH = 67;
       pathsCheckedInfo = `
 ║                                                                     ║
 ║  ${'Paths checked:'.padEnd(BOX_CONTENT_WIDTH)}║
-${pathsChecked.map((p) => `║    ${p.substring(0, BOX_CONTENT_WIDTH - 2).padEnd(BOX_CONTENT_WIDTH - 2)}  ║`).join('\n')}`;
+${pathsChecked.map((p) => `║    ${p.substring(0, BOX_CONTENT_WIDTH - 4).padEnd(BOX_CONTENT_WIDTH - 4)}  ║`).join('\n')}`;
     }
   }
 

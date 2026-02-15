@@ -6,6 +6,7 @@
 import type { Request, Response } from 'express';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { createLogger } from '@automaker/utils';
+import { getClaudeAuthIndicators } from '@automaker/platform';
 import { getApiKey } from '../common.js';
 import {
   createSecureAuthEnv,
@@ -327,12 +328,11 @@ export function createVerifyClaudeAuthHandler() {
           authType = 'api_key';
         } else if (authMethod === 'cli') {
           // Check if CLI auth is via OAuth (Claude Code subscription) or generic CLI
-          // OAuth tokens are stored in the credentials file by the Claude CLI
-          const { getClaudeAuthIndicators } = await import('@automaker/platform');
-          const indicators = await getClaudeAuthIndicators();
-          if (indicators.credentials?.hasOAuthToken) {
-            authType = 'oauth';
-          } else {
+          try {
+            const indicators = await getClaudeAuthIndicators();
+            authType = indicators.credentials?.hasOAuthToken ? 'oauth' : 'cli';
+          } catch {
+            // Fall back to generic CLI if credential check fails
             authType = 'cli';
           }
         }
