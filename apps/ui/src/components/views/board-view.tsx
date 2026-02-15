@@ -437,6 +437,63 @@ export function BoardView() {
   // Auto mode hook - pass current worktree to get worktree-specific state
   // Must be after selectedWorktree is defined
   const autoMode = useAutoMode(selectedWorktree);
+
+  const refreshBoardState = useCallback(async () => {
+    if (!currentProject) return;
+
+    const projectPath = currentProject.path;
+    const beforeFeatures = (
+      queryClient.getQueryData(queryKeys.features.all(projectPath)) as Feature[] | undefined
+    )?.length;
+    const beforeWorktrees = (
+      queryClient.getQueryData(queryKeys.worktrees.all(projectPath)) as
+        | { worktrees?: unknown[] }
+        | undefined
+    )?.worktrees?.length;
+    const beforeRunningAgents = (
+      queryClient.getQueryData(queryKeys.runningAgents.all()) as { count?: number } | undefined
+    )?.count;
+    const beforeAutoModeRunning = autoMode.isRunning;
+
+    try {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: queryKeys.features.all(projectPath) }),
+        queryClient.refetchQueries({ queryKey: queryKeys.runningAgents.all() }),
+        queryClient.refetchQueries({ queryKey: queryKeys.worktrees.all(projectPath) }),
+        autoMode.refreshStatus(),
+      ]);
+
+      const afterFeatures = (
+        queryClient.getQueryData(queryKeys.features.all(projectPath)) as Feature[] | undefined
+      )?.length;
+      const afterWorktrees = (
+        queryClient.getQueryData(queryKeys.worktrees.all(projectPath)) as
+          | { worktrees?: unknown[] }
+          | undefined
+      )?.worktrees?.length;
+      const afterRunningAgents = (
+        queryClient.getQueryData(queryKeys.runningAgents.all()) as { count?: number } | undefined
+      )?.count;
+      const afterAutoModeRunning = autoMode.isRunning;
+
+      if (
+        beforeFeatures !== afterFeatures ||
+        beforeWorktrees !== afterWorktrees ||
+        beforeRunningAgents !== afterRunningAgents ||
+        beforeAutoModeRunning !== afterAutoModeRunning
+      ) {
+        logger.info('[Board] Refresh detected state mismatch', {
+          features: { before: beforeFeatures, after: afterFeatures },
+          worktrees: { before: beforeWorktrees, after: afterWorktrees },
+          runningAgents: { before: beforeRunningAgents, after: afterRunningAgents },
+          autoModeRunning: { before: beforeAutoModeRunning, after: afterAutoModeRunning },
+        });
+      }
+    } catch (error) {
+      logger.error('[Board] Failed to refresh board state:', error);
+      toast.error('Failed to refresh board state');
+    }
+  }, [autoMode, currentProject, queryClient]);
   // Get runningTasks from the hook (scoped to current project/worktree)
   const runningAutoTasks = autoMode.runningTasks;
   // Get worktree-specific maxConcurrency from the hook
@@ -1275,8 +1332,10 @@ export function BoardView() {
         maxConcurrency={maxConcurrency}
         runningAgentsCount={runningAutoTasks.length}
         onConcurrencyChange={(newMaxConcurrency) => {
-          if (currentProject && selectedWorktree) {
-            const branchName = selectedWorktree.isMain ? null : selectedWorktree.branch;
+          if (currentProject) {
+            // If selectedWorktree is undefined or it's the main worktree, branchName will be null.
+            // Otherwise, use the branch name.
+            const branchName = selectedWorktree?.isMain === false ? selectedWorktree.branch : null;
             setMaxConcurrencyForWorktree(currentProject.id, branchName, newMaxConcurrency);
 
             // Persist to server settings so capacity checks use the correct value
@@ -1319,6 +1378,7 @@ export function BoardView() {
         isCreatingSpec={isCreatingSpec}
         creatingSpecProjectPath={creatingSpecProjectPath}
         onShowBoardBackground={() => setShowBoardBackgroundModal(true)}
+        onRefreshBoard={refreshBoardState}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
       />

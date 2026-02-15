@@ -6,6 +6,7 @@
 import type { Request, Response } from 'express';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { createLogger } from '@automaker/utils';
+import { getClaudeAuthIndicators } from '@automaker/platform';
 import { getApiKey } from '../common.js';
 import {
   createSecureAuthEnv,
@@ -320,9 +321,27 @@ export function createVerifyClaudeAuthHandler() {
         authMethod,
       });
 
+      // Determine specific auth type for success messages
+      let authType: 'oauth' | 'api_key' | 'cli' | undefined;
+      if (authenticated) {
+        if (authMethod === 'api_key') {
+          authType = 'api_key';
+        } else if (authMethod === 'cli') {
+          // Check if CLI auth is via OAuth (Claude Code subscription) or generic CLI
+          try {
+            const indicators = await getClaudeAuthIndicators();
+            authType = indicators.credentials?.hasOAuthToken ? 'oauth' : 'cli';
+          } catch {
+            // Fall back to generic CLI if credential check fails
+            authType = 'cli';
+          }
+        }
+      }
+
       res.json({
         success: true,
         authenticated,
+        authType,
         error: errorMessage || undefined,
       });
     } catch (error) {
