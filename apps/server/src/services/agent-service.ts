@@ -389,14 +389,16 @@ export class AgentService {
 
       // Get provider for this model (with prefix)
       // When using custom provider (GLM, MiniMax), requestedModel routes to Claude provider
-      const modelForProvider = claudeCompatibleProvider ? requestedModel : effectiveModel;
+      const modelForProvider = claudeCompatibleProvider
+        ? (requestedModel ?? effectiveModel)
+        : effectiveModel;
       const provider = ProviderFactory.getProviderForModel(modelForProvider);
 
       // Strip provider prefix - providers should receive bare model IDs
       // CRITICAL: For custom providers (GLM, MiniMax), pass the provider's model ID (e.g. "GLM-4.7")
       // to the API, NOT the resolved Claude model - otherwise we get "model not found"
-      const bareModel = claudeCompatibleProvider
-        ? requestedModel
+      const bareModel: string = claudeCompatibleProvider
+        ? (requestedModel ?? effectiveModel)
         : stripProviderPrefix(effectiveModel);
 
       // Build options for provider
