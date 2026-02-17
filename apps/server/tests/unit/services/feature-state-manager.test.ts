@@ -151,7 +151,7 @@ describe('FeatureStateManager', () => {
       expect(savedFeature.justFinishedAt).toBeUndefined();
     });
 
-    it('should finalize in_progress and pending tasks when moving to waiting_approval', async () => {
+    it('should finalize in_progress tasks but keep pending tasks when moving to waiting_approval', async () => {
       const featureWithTasks: Feature = {
         ...mockFeature,
         status: 'in_progress',
@@ -178,13 +178,15 @@ describe('FeatureStateManager', () => {
       await manager.updateFeatureStatus('/project', 'feature-123', 'waiting_approval');
 
       const savedFeature = (atomicWriteJson as Mock).mock.calls[0][1] as Feature;
-      // Only in_progress tasks should be completed
+      // Already completed tasks stay completed
       expect(savedFeature.planSpec?.tasks?.[0].status).toBe('completed');
+      // in_progress tasks should be finalized to completed
       expect(savedFeature.planSpec?.tasks?.[1].status).toBe('completed');
+      // pending tasks should remain pending (never started)
       expect(savedFeature.planSpec?.tasks?.[2].status).toBe('pending');
       // currentTaskId should be cleared
       expect(savedFeature.planSpec?.currentTaskId).toBeUndefined();
-      // tasksCompleted should be 2, not 3
+      // tasksCompleted should equal actual completed tasks count
       expect(savedFeature.planSpec?.tasksCompleted).toBe(2);
     });
 
@@ -215,14 +217,16 @@ describe('FeatureStateManager', () => {
       await manager.updateFeatureStatus('/project', 'feature-123', 'verified');
 
       const savedFeature = (atomicWriteJson as Mock).mock.calls[0][1] as Feature;
-      // All tasks should be completed
+      // Already completed tasks stay completed
       expect(savedFeature.planSpec?.tasks?.[0].status).toBe('completed');
+      // in_progress tasks should be finalized to completed
       expect(savedFeature.planSpec?.tasks?.[1].status).toBe('completed');
-      expect(savedFeature.planSpec?.tasks?.[2].status).toBe('completed');
+      // pending tasks should remain pending (never started)
+      expect(savedFeature.planSpec?.tasks?.[2].status).toBe('pending');
       // currentTaskId should be cleared
       expect(savedFeature.planSpec?.currentTaskId).toBeUndefined();
-      // tasksCompleted should equal total tasks
-      expect(savedFeature.planSpec?.tasksCompleted).toBe(3);
+      // tasksCompleted should equal actual completed tasks count
+      expect(savedFeature.planSpec?.tasksCompleted).toBe(2);
       // justFinishedAt should be cleared for verified
       expect(savedFeature.justFinishedAt).toBeUndefined();
     });
