@@ -178,14 +178,14 @@ describe('FeatureStateManager', () => {
       await manager.updateFeatureStatus('/project', 'feature-123', 'waiting_approval');
 
       const savedFeature = (atomicWriteJson as Mock).mock.calls[0][1] as Feature;
-      // All tasks should be completed
+      // Only in_progress tasks should be completed
       expect(savedFeature.planSpec?.tasks?.[0].status).toBe('completed');
       expect(savedFeature.planSpec?.tasks?.[1].status).toBe('completed');
-      expect(savedFeature.planSpec?.tasks?.[2].status).toBe('completed');
+      expect(savedFeature.planSpec?.tasks?.[2].status).toBe('pending');
       // currentTaskId should be cleared
       expect(savedFeature.planSpec?.currentTaskId).toBeUndefined();
-      // tasksCompleted should equal total tasks
-      expect(savedFeature.planSpec?.tasksCompleted).toBe(3);
+      // tasksCompleted should be 2, not 3
+      expect(savedFeature.planSpec?.tasksCompleted).toBe(2);
     });
 
     it('should finalize tasks when moving to verified status', async () => {
