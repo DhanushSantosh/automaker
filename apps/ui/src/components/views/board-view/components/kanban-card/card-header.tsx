@@ -1,5 +1,6 @@
 // @ts-nocheck - header component props with optional handlers and status variants
 import { memo, useState } from 'react';
+import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 import { Feature } from '@/store/app-store';
 import { cn } from '@/lib/utils';
 import { CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,6 +36,8 @@ interface CardHeaderProps {
   onDelete: () => void;
   onViewOutput?: () => void;
   onSpawnTask?: () => void;
+  dragHandleListeners?: DraggableSyntheticListeners;
+  dragHandleAttributes?: DraggableAttributes;
 }
 
 export const CardHeaderSection = memo(function CardHeaderSection({
@@ -46,6 +49,8 @@ export const CardHeaderSection = memo(function CardHeaderSection({
   onDelete,
   onViewOutput,
   onSpawnTask,
+  dragHandleListeners,
+  dragHandleAttributes,
 }: CardHeaderProps) {
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -319,8 +324,10 @@ export const CardHeaderSection = memo(function CardHeaderSection({
       <div className="flex items-start gap-2">
         {isDraggable && (
           <div
-            className="-ml-2 -mt-1 p-2 touch-none opacity-40 hover:opacity-70 transition-opacity"
+            className="-ml-2 -mt-1 p-2 touch-none cursor-grab active:cursor-grabbing opacity-40 hover:opacity-70 transition-opacity"
             data-testid={`drag-handle-${feature.id}`}
+            {...dragHandleAttributes}
+            {...dragHandleListeners}
           >
             <GripVertical className="w-3.5 h-3.5 text-muted-foreground" />
           </div>

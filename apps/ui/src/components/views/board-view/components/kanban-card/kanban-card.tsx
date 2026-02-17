@@ -32,7 +32,7 @@ function getCursorClass(
 ): string {
   if (isSelectionMode) return 'cursor-pointer';
   if (isOverlay) return 'cursor-grabbing';
-  if (isDraggable) return 'cursor-grab active:cursor-grabbing';
+  // Drag cursor is now only on the drag handle, not the full card
   return 'cursor-default';
 }
 
@@ -172,7 +172,7 @@ export const KanbanCard = memo(function KanbanCard({
   const isSelectable = isSelectionMode && feature.status === selectionTarget;
 
   const wrapperClasses = cn(
-    'relative select-none outline-none touch-none transition-transform duration-200 ease-out',
+    'relative select-none outline-none transition-transform duration-200 ease-out',
     getCursorClass(isOverlay, isDraggable, isSelectable),
     isOverlay && isLifted && 'scale-105 rotate-1 z-50',
     // Visual feedback when another card is being dragged over this one
@@ -254,6 +254,8 @@ export const KanbanCard = memo(function KanbanCard({
         onDelete={onDelete}
         onViewOutput={onViewOutput}
         onSpawnTask={onSpawnTask}
+        dragHandleListeners={isDraggable ? listeners : undefined}
+        dragHandleAttributes={isDraggable ? attributes : undefined}
       />
 
       <CardContent className="px-3 pt-0 pb-0">
@@ -296,8 +298,6 @@ export const KanbanCard = memo(function KanbanCard({
     <div
       ref={setNodeRef}
       style={dndStyle}
-      {...attributes}
-      {...(isDraggable ? listeners : {})}
       className={wrapperClasses}
       data-testid={`kanban-card-${feature.id}`}
     >
