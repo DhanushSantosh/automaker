@@ -230,10 +230,9 @@ export class IdeationService {
         );
         if (providerResult.provider) {
           claudeCompatibleProvider = providerResult.provider;
-          // Use resolved model from provider if available (maps to Claude model)
-          if (providerResult.resolvedModel) {
-            modelId = providerResult.resolvedModel;
-          }
+          // CRITICAL: For custom providers, use the provider's model ID (e.g. "GLM-4.7")
+          // for the API call, NOT the resolved Claude model - otherwise we get "model not found"
+          modelId = options.model;
           credentials = providerResult.credentials ?? credentials;
         }
       }
@@ -889,7 +888,7 @@ ${contextSection}${existingWorkSection}`;
 
     for (const line of lines) {
       // Check for numbered items or markdown headers
-      const titleMatch = line.match(/^(?:\d+[\.\)]\s*\*{0,2}|#{1,3}\s+)(.+)/);
+      const titleMatch = line.match(/^(?:\d+[.)]\s*\*{0,2}|#{1,3}\s+)(.+)/);
 
       if (titleMatch) {
         // Save previous suggestion

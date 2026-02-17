@@ -22,6 +22,7 @@ function formatThinkingLevel(level: ThinkingLevel | undefined): string {
     medium: 'Med',
     high: 'High',
     ultrathink: 'Ultra',
+    adaptive: 'Adaptive',
   };
   return labels[level];
 }
@@ -152,6 +153,7 @@ export const AgentInfoPanel = memo(function AgentInfoPanel({
 
   // Derive effective todos from planSpec.tasks when available, fallback to agentInfo.todos
   // Uses freshPlanSpec (from API) for accurate progress, with taskStatusMap for real-time updates
+  const isFeatureFinished = feature.status === 'waiting_approval' || feature.status === 'verified';
   const effectiveTodos = useMemo(() => {
     // Use freshPlanSpec if available (fetched from API), fallback to store's feature.planSpec
     const planSpec = freshPlanSpec?.tasks?.length ? freshPlanSpec : feature.planSpec;
@@ -162,6 +164,20 @@ export const AgentInfoPanel = memo(function AgentInfoPanel({
       const currentTaskId = planSpec.currentTaskId;
 
       return planSpec.tasks.map((task: ParsedTask, index: number) => {
+        // When feature is finished (waiting_approval/verified), finalize task display:
+        // - in_progress tasks → completed (agent was working on them when it finished)
+        // - pending tasks stay pending (they were never started)
+        // - completed tasks stay completed
+        // This matches server-side behavior in feature-state-manager.ts
+        if (isFeatureFinished) {
+          const finalStatus =
+            task.status === 'in_progress' || task.status === 'failed' ? 'completed' : task.status;
+          return {
+            content: task.description,
+            status: (finalStatus || 'completed') as 'pending' | 'in_progress' | 'completed',
+          };
+        }
+
         // Use real-time status from WebSocket events if available
         const realtimeStatus = taskStatusMap.get(task.id);
 
@@ -198,6 +214,7 @@ export const AgentInfoPanel = memo(function AgentInfoPanel({
     feature.planSpec?.currentTaskId,
     agentInfo?.todos,
     taskStatusMap,
+    isFeatureFinished,
   ]);
 
   // Listen to WebSocket events for real-time task status updates
