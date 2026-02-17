@@ -386,6 +386,30 @@ eventHookService.initialize(events, settingsService, eventHistoryService, featur
   await agentService.initialize();
   logger.info('Agent service initialized');
 
+  // Reconcile feature states on startup
+  // After any type of restart (clean, forced, crash), features may be stuck in
+  // transient states (in_progress, interrupted, pipeline_*) that don't match reality.
+  // Reconcile them back to resting states before the UI is served.
+  try {
+    const settings = await settingsService.getGlobalSettings();
+    if (settings.projects && settings.projects.length > 0) {
+      let totalReconciled = 0;
+      for (const project of settings.projects) {
+        const count = await autoModeService.reconcileFeatureStates(project.path);
+        totalReconciled += count;
+      }
+      if (totalReconciled > 0) {
+        logger.info(
+          `[STARTUP] Reconciled ${totalReconciled} feature(s) across ${settings.projects.length} project(s)`
+        );
+      } else {
+        logger.info('[STARTUP] Feature state reconciliation complete - no stale states found');
+      }
+    }
+  } catch (err) {
+    logger.warn('[STARTUP] Failed to reconcile feature states:', err);
+  }
+
   // Bootstrap Codex model cache in background (don't block server startup)
   void codexModelCacheService.getModels().catch((err) => {
     logger.error('Failed to bootstrap Codex model cache:', err);

@@ -42,6 +42,8 @@ export type AutoModeEventType =
   | 'plan_revision_warning'
   | 'pipeline_step_started'
   | 'pipeline_step_complete'
+  | 'feature_status_changed'
+  | 'features_reconciled'
   | string; // Allow other strings for extensibility
 
 /**

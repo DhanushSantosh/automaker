@@ -359,6 +359,21 @@ export type AutoModeEvent =
         title?: string;
         status?: string;
       }>;
+    }
+  | {
+      type: 'feature_status_changed';
+      featureId: string;
+      projectPath?: string;
+      status: string;
+      previousStatus: string;
+      reason?: string;
+    }
+  | {
+      type: 'features_reconciled';
+      projectPath?: string;
+      reconciledCount: number;
+      reconciledFeatureIds: string[];
+      message: string;
     };
 
 export type SpecRegenerationEvent =
