@@ -510,7 +510,7 @@ export function useBoardActions({
       }
 
       removeFeature(featureId);
-      persistFeatureDelete(featureId);
+      await persistFeatureDelete(featureId);
     },
     [features, runningAutoTasks, autoMode, removeFeature, persistFeatureDelete]
   );

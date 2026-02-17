@@ -86,16 +86,26 @@ export function useBoardPersistence({ currentProject }: UseBoardPersistenceProps
           return;
         }
 
+        // Optimistically add to React Query cache for immediate board refresh
+        queryClient.setQueryData<Feature[]>(
+          queryKeys.features.all(currentProject.path),
+          (existing) => (existing ? [...existing, feature] : [feature])
+        );
+
         const result = await api.features.create(currentProject.path, feature as ApiFeature);
         if (result.success && result.feature) {
           updateFeature(result.feature.id, result.feature as Partial<Feature>);
-          // Invalidate React Query cache to sync UI
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.features.all(currentProject.path),
-          });
         }
+        // Always invalidate to sync with server state
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.features.all(currentProject.path),
+        });
       } catch (error) {
         logger.error('Failed to persist feature creation:', error);
+        // Rollback optimistic update on error
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.features.all(currentProject.path),
+        });
       }
     },
     [currentProject, updateFeature, queryClient]
@@ -106,6 +116,15 @@ export function useBoardPersistence({ currentProject }: UseBoardPersistenceProps
     async (featureId: string) => {
       if (!currentProject) return;
 
+      // Optimistically remove from React Query cache for immediate board refresh
+      const previousFeatures = queryClient.getQueryData<Feature[]>(
+        queryKeys.features.all(currentProject.path)
+      );
+      queryClient.setQueryData<Feature[]>(
+        queryKeys.features.all(currentProject.path),
+        (existing) => (existing ? existing.filter((f) => f.id !== featureId) : existing)
+      );
+
       try {
         const api = getElectronAPI();
         if (!api.features) {
@@ -114,12 +133,19 @@ export function useBoardPersistence({ currentProject }: UseBoardPersistenceProps
         }
 
         await api.features.delete(currentProject.path, featureId);
-        // Invalidate React Query cache to sync UI
+        // Invalidate to sync with server state
         queryClient.invalidateQueries({
           queryKey: queryKeys.features.all(currentProject.path),
         });
       } catch (error) {
         logger.error('Failed to persist feature deletion:', error);
+        // Rollback optimistic update on error
+        if (previousFeatures) {
+          queryClient.setQueryData(queryKeys.features.all(currentProject.path), previousFeatures);
+        }
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.features.all(currentProject.path),
+        });
       }
     },
     [currentProject, queryClient]
