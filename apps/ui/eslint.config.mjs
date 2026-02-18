@@ -79,6 +79,7 @@ const eslintConfig = defineConfig([
         MouseEvent: 'readonly',
         UIEvent: 'readonly',
         MediaQueryListEvent: 'readonly',
+        PageTransitionEvent: 'readonly',
         DataTransfer: 'readonly',
         // Web APIs
         ResizeObserver: 'readonly',
@@ -116,6 +117,7 @@ const eslintConfig = defineConfig([
         console: 'readonly',
         // Vite defines
         __APP_VERSION__: 'readonly',
+        __APP_BUILD_HASH__: 'readonly',
       },
     },
     plugins: {
