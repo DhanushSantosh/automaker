@@ -210,18 +210,14 @@ export function useProviderAuthInit() {
   ]);
 
   useEffect(() => {
-    // Only initialize once per session if not already set
-    if (
-      initialized.current ||
-      (claudeAuthStatus !== null &&
-        codexAuthStatus !== null &&
-        zaiAuthStatus !== null &&
-        geminiAuthStatus !== null)
-    ) {
+    // Skip if already initialized in this session
+    if (initialized.current) {
       return;
     }
     initialized.current = true;
 
+    // Always call refreshStatuses() to background re-validate on app restart,
+    // even when statuses are pre-populated from persisted storage (cache case).
     void refreshStatuses();
   }, [refreshStatuses, claudeAuthStatus, codexAuthStatus, zaiAuthStatus, geminiAuthStatus]);
 }

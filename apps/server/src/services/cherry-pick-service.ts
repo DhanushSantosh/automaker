@@ -7,7 +7,7 @@
  */
 
 import { createLogger } from '@automaker/utils';
-import { spawnProcess } from '@automaker/platform';
+import { execGitCommand } from '../routes/worktree/common.js';
 
 const logger = createLogger('CherryPickService');
 
@@ -28,28 +28,6 @@ export interface CherryPickResult {
   commitHashes?: string[];
   branch?: string;
   message?: string;
-}
-
-// ============================================================================
-// Internal git command execution
-// ============================================================================
-
-/**
- * Execute git command with array arguments to prevent command injection.
- */
-async function execGitCommand(args: string[], cwd: string): Promise<string> {
-  const result = await spawnProcess({
-    command: 'git',
-    args,
-    cwd,
-  });
-
-  if (result.exitCode === 0) {
-    return result.stdout;
-  } else {
-    const errorMessage = result.stderr || `Git command failed with code ${result.exitCode}`;
-    throw new Error(errorMessage);
-  }
 }
 
 // ============================================================================
@@ -101,6 +79,16 @@ export async function runCherryPick(
 
     const branch = await getCurrentBranch(worktreePath);
 
+    if (options?.noCommit) {
+      return {
+        success: true,
+        cherryPicked: false,
+        commitHashes,
+        branch,
+        message: `Staged changes from ${commitHashes.length} commit(s); no commit created due to --no-commit`,
+      };
+    }
+
     return {
       success: true,
       cherryPicked: true,
@@ -119,13 +107,22 @@ export async function runCherryPick(
 
     if (hasConflicts) {
       // Abort the cherry-pick to leave the repo in a clean state
-      await abortCherryPick(worktreePath);
+      const aborted = await abortCherryPick(worktreePath);
+
+      if (!aborted) {
+        logger.error(
+          'Failed to abort cherry-pick after conflict; repository may be in a dirty state',
+          { worktreePath }
+        );
+      }
 
       return {
         success: false,
-        error: 'Cherry-pick aborted due to conflicts; no changes were applied.',
+        error: aborted
+          ? 'Cherry-pick aborted due to conflicts; no changes were applied.'
+          : 'Cherry-pick failed due to conflicts and the abort also failed; repository may be in a dirty state.',
         hasConflicts: true,
-        aborted: true,
+        aborted,
       };
     }
 

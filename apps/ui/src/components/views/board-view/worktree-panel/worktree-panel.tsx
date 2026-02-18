@@ -41,6 +41,7 @@ import {
   StashChangesDialog,
   ViewStashesDialog,
   CherryPickDialog,
+  GitPullDialog,
 } from '../dialogs';
 import type { SelectRemoteOperation } from '../dialogs';
 import { TestLogsPanel } from '@/components/ui/test-logs-panel';
@@ -61,6 +62,7 @@ export function WorktreePanel({
   onCreateMergeConflictResolutionFeature,
   onBranchSwitchConflict,
   onStashPopConflict,
+  onStashApplyConflict,
   onBranchDeletedDuringMerge,
   onRemovedWorktrees,
   runningFeatureIds = [],
@@ -107,7 +109,7 @@ export function WorktreePanel({
     isSwitching,
     isActivating,
     handleSwitchBranch,
-    handlePull,
+    handlePull: _handlePull,
     handlePush,
     handleOpenInIntegratedTerminal,
     handleOpenInEditor,
@@ -423,6 +425,11 @@ export function WorktreePanel({
   const [cherryPickDialogOpen, setCherryPickDialogOpen] = useState(false);
   const [cherryPickWorktree, setCherryPickWorktree] = useState<WorktreeInfo | null>(null);
 
+  // Pull dialog states
+  const [pullDialogOpen, setPullDialogOpen] = useState(false);
+  const [pullDialogWorktree, setPullDialogWorktree] = useState<WorktreeInfo | null>(null);
+  const [pullDialogRemote, setPullDialogRemote] = useState<string | undefined>(undefined);
+
   const isMobile = useIsMobile();
 
   // Periodic interval check (30 seconds) to detect branch changes on disk
@@ -553,33 +560,42 @@ export function WorktreePanel({
     setPushToRemoteDialogOpen(true);
   }, []);
 
-  // Handle pull with remote selection when multiple remotes exist
-  const handlePullWithRemoteSelection = useCallback(
-    async (worktree: WorktreeInfo) => {
-      try {
-        const api = getHttpApiClient();
-        const result = await api.worktree.listRemotes(worktree.path);
+  // Handle pull completed - refresh worktrees
+  const handlePullCompleted = useCallback(() => {
+    fetchWorktrees({ silent: true });
+  }, [fetchWorktrees]);
 
-        if (result.success && result.result && result.result.remotes.length > 1) {
-          // Multiple remotes - show selection dialog
-          setSelectRemoteWorktree(worktree);
-          setSelectRemoteOperation('pull');
-          setSelectRemoteDialogOpen(true);
-        } else if (result.success && result.result && result.result.remotes.length === 1) {
-          // Exactly one remote - use it directly
-          const remoteName = result.result.remotes[0].name;
-          handlePull(worktree, remoteName);
-        } else {
-          // No remotes - proceed with default behavior
-          handlePull(worktree);
-        }
-      } catch {
-        // If listing remotes fails, fall back to default behavior
-        handlePull(worktree);
+  // Handle pull with remote selection when multiple remotes exist
+  // Now opens the pull dialog which handles stash management and conflict resolution
+  const handlePullWithRemoteSelection = useCallback(async (worktree: WorktreeInfo) => {
+    try {
+      const api = getHttpApiClient();
+      const result = await api.worktree.listRemotes(worktree.path);
+
+      if (result.success && result.result && result.result.remotes.length > 1) {
+        // Multiple remotes - show selection dialog first
+        setSelectRemoteWorktree(worktree);
+        setSelectRemoteOperation('pull');
+        setSelectRemoteDialogOpen(true);
+      } else if (result.success && result.result && result.result.remotes.length === 1) {
+        // Exactly one remote - open pull dialog directly with that remote
+        const remoteName = result.result.remotes[0].name;
+        setPullDialogRemote(remoteName);
+        setPullDialogWorktree(worktree);
+        setPullDialogOpen(true);
+      } else {
+        // No remotes - open pull dialog with default
+        setPullDialogRemote(undefined);
+        setPullDialogWorktree(worktree);
+        setPullDialogOpen(true);
       }
-    },
-    [handlePull]
-  );
+    } catch {
+      // If listing remotes fails, open pull dialog with default
+      setPullDialogRemote(undefined);
+      setPullDialogWorktree(worktree);
+      setPullDialogOpen(true);
+    }
+  }, []);
 
   // Handle push with remote selection when multiple remotes exist
   const handlePushWithRemoteSelection = useCallback(
@@ -613,6 +629,10 @@ export function WorktreePanel({
   const handleConfirmSelectRemote = useCallback(
     async (worktree: WorktreeInfo, remote: string) => {
       if (selectRemoteOperation === 'pull') {
+        // Open the pull dialog with the selected remote
+        setPullDialogRemote(remote);
+        setPullDialogWorktree(worktree);
+        setPullDialogOpen(true);
         await handlePull(worktree, remote);
       } else {
         await handlePush(worktree, remote);
@@ -620,7 +640,7 @@ export function WorktreePanel({
       fetchBranches(worktree.path);
       fetchWorktrees();
     },
-    [selectRemoteOperation, handlePull, handlePush, fetchBranches, fetchWorktrees]
+    [selectRemoteOperation, handlePush, fetchBranches, fetchWorktrees]
   );
 
   // Handle confirming the push to remote dialog
@@ -822,6 +842,7 @@ export function WorktreePanel({
           onOpenChange={setViewStashesDialogOpen}
           worktree={viewStashesWorktree}
           onStashApplied={handleStashApplied}
+          onStashApplyConflict={onStashApplyConflict}
         />
 
         {/* Cherry Pick Dialog */}
@@ -830,6 +851,16 @@ export function WorktreePanel({
           onOpenChange={setCherryPickDialogOpen}
           worktree={cherryPickWorktree}
           onCherryPicked={handleCherryPicked}
+          onCreateConflictResolutionFeature={onCreateMergeConflictResolutionFeature}
+        />
+
+        {/* Git Pull Dialog */}
+        <GitPullDialog
+          open={pullDialogOpen}
+          onOpenChange={setPullDialogOpen}
+          worktree={pullDialogWorktree}
+          remote={pullDialogRemote}
+          onPulled={handlePullCompleted}
           onCreateConflictResolutionFeature={onCreateMergeConflictResolutionFeature}
         />
 
@@ -1054,6 +1085,7 @@ export function WorktreePanel({
                 onViewTestLogs={handleViewTestLogs}
                 onStashChanges={handleStashChanges}
                 onViewStashes={handleViewStashes}
+                onCherryPick={handleCherryPick}
                 hasInitScript={hasInitScript}
                 hasTestCommand={hasTestCommand}
               />
@@ -1130,6 +1162,7 @@ export function WorktreePanel({
                       onViewTestLogs={handleViewTestLogs}
                       onStashChanges={handleStashChanges}
                       onViewStashes={handleViewStashes}
+                      onCherryPick={handleCherryPick}
                       hasInitScript={hasInitScript}
                       hasTestCommand={hasTestCommand}
                     />
@@ -1259,6 +1292,16 @@ export function WorktreePanel({
         onOpenChange={setCherryPickDialogOpen}
         worktree={cherryPickWorktree}
         onCherryPicked={handleCherryPicked}
+        onCreateConflictResolutionFeature={onCreateMergeConflictResolutionFeature}
+      />
+
+      {/* Git Pull Dialog */}
+      <GitPullDialog
+        open={pullDialogOpen}
+        onOpenChange={setPullDialogOpen}
+        worktree={pullDialogWorktree}
+        remote={pullDialogRemote}
+        onPulled={handlePullCompleted}
         onCreateConflictResolutionFeature={onCreateMergeConflictResolutionFeature}
       />
     </div>

@@ -2135,8 +2135,8 @@ export class HttpApiClient implements ElectronAPI {
         featureId,
         filePath,
       }),
-    pull: (worktreePath: string, remote?: string) =>
-      this.post('/api/worktree/pull', { worktreePath, remote }),
+    pull: (worktreePath: string, remote?: string, stashIfNeeded?: boolean) =>
+      this.post('/api/worktree/pull', { worktreePath, remote, stashIfNeeded }),
     checkoutBranch: (worktreePath: string, branchName: string, baseBranch?: string) =>
       this.post('/api/worktree/checkout-branch', { worktreePath, branchName, baseBranch }),
     listBranches: (worktreePath: string, includeRemote?: boolean) =>
@@ -2230,6 +2230,8 @@ export class HttpApiClient implements ElectronAPI {
       this.post('/api/worktree/stash-drop', { worktreePath, stashIndex }),
     cherryPick: (worktreePath: string, commitHashes: string[], options?: { noCommit?: boolean }) =>
       this.post('/api/worktree/cherry-pick', { worktreePath, commitHashes, options }),
+    rebase: (worktreePath: string, ontoBranch: string) =>
+      this.post('/api/worktree/rebase', { worktreePath, ontoBranch }),
     getBranchCommitLog: (worktreePath: string, branchName?: string, limit?: number) =>
       this.post('/api/worktree/branch-commit-log', { worktreePath, branchName, limit }),
     getTestLogs: (worktreePath?: string, sessionId?: string): Promise<TestLogsResponse> => {

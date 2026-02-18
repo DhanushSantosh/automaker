@@ -21,6 +21,8 @@ import { createLogger } from '@automaker/utils/logger';
 
 const logger = createLogger('BoardActions');
 
+const MAX_DUPLICATES = 50;
+
 interface UseBoardActionsProps {
   currentProject: { path: string; id: string } | null;
   features: Feature[];
@@ -1199,10 +1201,22 @@ export function useBoardActions({
 
   const handleDuplicateAsChildMultiple = useCallback(
     async (feature: Feature, count: number) => {
+      // Guard: reject non-positive counts
+      if (count <= 0) {
+        toast.error('Invalid duplicate count', {
+          description: 'Count must be a positive number.',
+        });
+        return;
+      }
+
+      // Cap count to prevent runaway API calls
+      const effectiveCount = Math.min(count, MAX_DUPLICATES);
+
       // Create a chain of duplicates, each a child of the previous, so they execute sequentially
       let parentFeature = feature;
+      let successCount = 0;
 
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i < effectiveCount; i++) {
         const {
           id: _id,
           status: _status,
@@ -1223,18 +1237,39 @@ export function useBoardActions({
           dependencies: [parentFeature.id],
         };
 
-        const newFeature = await handleAddFeature(duplicatedFeatureData);
+        try {
+          const newFeature = await handleAddFeature(duplicatedFeatureData);
 
-        // Use the returned feature directly as the parent for the next iteration,
-        // avoiding a fragile assumption that the newest feature is the last item in the store
-        if (newFeature) {
-          parentFeature = newFeature;
+          // Use the returned feature directly as the parent for the next iteration,
+          // avoiding a fragile assumption that the newest feature is the last item in the store
+          if (newFeature) {
+            parentFeature = newFeature;
+          }
+          successCount++;
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          toast.error(
+            `Failed after creating ${successCount} of ${effectiveCount} duplicate${effectiveCount !== 1 ? 's' : ''}`,
+            {
+              description: errorMessage,
+            }
+          );
+          return;
         }
       }
 
-      toast.success(`Created ${count} chained duplicates`, {
-        description: `Created ${count} sequential copies of: ${truncateDescription(feature.description || feature.title || '')}`,
-      });
+      if (successCount === effectiveCount) {
+        toast.success(`Created ${successCount} chained duplicate${successCount !== 1 ? 's' : ''}`, {
+          description: `Created ${successCount} sequential ${successCount !== 1 ? 'copies' : 'copy'} of: ${truncateDescription(feature.description || feature.title || '')}`,
+        });
+      } else {
+        toast.info(
+          `Partially created ${successCount} of ${effectiveCount} chained duplicate${effectiveCount !== 1 ? 's' : ''}`,
+          {
+            description: `Created ${successCount} sequential ${successCount !== 1 ? 'copies' : 'copy'} of: ${truncateDescription(feature.description || feature.title || '')}`,
+          }
+        );
+      }
     },
     [handleAddFeature]
   );

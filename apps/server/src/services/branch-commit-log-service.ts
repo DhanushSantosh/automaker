@@ -36,8 +36,9 @@ export interface BranchCommitLogResult {
 /**
  * Fetch the commit log for a specific branch (or HEAD).
  *
- * Runs `git log`, `git diff-tree`, and `git rev-parse` inside
- * the given worktree path and returns a structured result.
+ * Runs a single `git log --name-only` invocation (plus `git rev-parse`
+ * when branchName is omitted) inside the given worktree path and
+ * returns a structured result.
  *
  * @param worktreePath - Absolute path to the worktree / repository
  * @param branchName   - Branch to query (omit or pass undefined for HEAD)
@@ -55,72 +56,95 @@ export async function getBranchCommitLog(
   // Use the specified branch or default to HEAD
   const targetRef = branchName || 'HEAD';
 
-  // Get detailed commit log for the specified branch
+  // Fetch commit metadata AND file lists in a single git call.
+  // Uses custom record separators so we can parse both metadata and
+  // --name-only output from one invocation, eliminating the previous
+  // N+1 pattern that spawned a separate `git diff-tree` per commit.
+  //
+  // -m causes merge commits to be diffed against each parent so all
+  // files touched by the merge are listed (without -m, --name-only
+  // produces no file output for merge commits because they have 2+ parents).
+  // This means merge commits appear multiple times in the output (once per
+  // parent), so we deduplicate by hash below and merge their file lists.
+  // We over-fetch (2× the limit) to compensate for -m duplicating merge
+  // commit entries, then trim the result to the requested limit.
+  const COMMIT_SEP = '---COMMIT---';
+  const META_END = '---META_END---';
+  const fetchLimit = commitLimit * 2;
+
   const logOutput = await execGitCommand(
     [
       'log',
       targetRef,
-      `--max-count=${commitLimit}`,
-      '--format=%H%n%h%n%an%n%ae%n%aI%n%s%n%b%n---END---',
+      `--max-count=${fetchLimit}`,
+      '-m',
+      '--name-only',
+      `--format=${COMMIT_SEP}%n%H%n%h%n%an%n%ae%n%aI%n%s%n%b${META_END}`,
     ],
     worktreePath
   );
 
-  // Parse the output into structured commit objects
-  const commits: BranchCommit[] = [];
+  // Split output into per-commit blocks and drop the empty first chunk
+  // (the output starts with ---COMMIT---).
+  const commitBlocks = logOutput.split(COMMIT_SEP).filter((block) => block.trim());
 
-  const commitBlocks = logOutput.split('---END---').filter((block) => block.trim());
+  // Use a Map to deduplicate merge commit entries (which appear once per
+  // parent when -m is used) while preserving insertion order.
+  const commitMap = new Map<string, BranchCommit>();
 
   for (const block of commitBlocks) {
-    const allLines = block.split('\n');
-    // Skip leading empty lines that result from the split.
-    // After splitting on ---END---, subsequent blocks start with a newline,
-    // which creates an empty first element that shifts all field indices
-    // (hash becomes empty, shortHash becomes hash, etc.).
-    let startIndex = 0;
-    while (startIndex < allLines.length && allLines[startIndex].trim() === '') {
-      startIndex++;
-    }
-    const lines = allLines.slice(startIndex);
-    if (lines.length >= 6) {
-      const hash = lines[0].trim();
+    const metaEndIdx = block.indexOf(META_END);
+    if (metaEndIdx === -1) continue; // malformed block, skip
 
-      // Get list of files changed in this commit
-      let files: string[] = [];
-      try {
-        const filesOutput = await execGitCommand(
-          // -m causes merge commits to be diffed against each parent,
-          // showing all files touched by the merge (without -m, diff-tree
-          // produces no output for merge commits because they have 2+ parents)
-          ['diff-tree', '--no-commit-id', '--name-only', '-r', '-m', hash],
-          worktreePath
-        );
-        // Deduplicate: -m can list the same file multiple times
-        // (once per parent diff for merge commits)
-        files = [
-          ...new Set(
-            filesOutput
-              .trim()
-              .split('\n')
-              .filter((f) => f.trim())
-          ),
-        ];
-      } catch {
-        // Ignore errors getting file list
-      }
+    // --- Parse metadata (everything before ---META_END---) ---
+    const metaRaw = block.substring(0, metaEndIdx);
+    const metaLines = metaRaw.split('\n');
 
-      commits.push({
+    // The first line may be empty (newline right after COMMIT_SEP), skip it
+    const nonEmptyStart = metaLines.findIndex((l) => l.trim() !== '');
+    if (nonEmptyStart === -1) continue;
+
+    const fields = metaLines.slice(nonEmptyStart);
+    if (fields.length < 6) continue; // need at least hash..subject
+
+    const hash = fields[0].trim();
+    const shortHash = fields[1].trim();
+    const author = fields[2].trim();
+    const authorEmail = fields[3].trim();
+    const date = fields[4].trim();
+    const subject = fields[5].trim();
+    const body = fields.slice(6).join('\n').trim();
+
+    // --- Parse file list (everything after ---META_END---) ---
+    const filesRaw = block.substring(metaEndIdx + META_END.length);
+    const blockFiles = filesRaw
+      .trim()
+      .split('\n')
+      .filter((f) => f.trim());
+
+    // Merge file lists for duplicate entries (merge commits with -m)
+    const existing = commitMap.get(hash);
+    if (existing) {
+      // Add new files to the existing entry's file set
+      const fileSet = new Set(existing.files);
+      for (const f of blockFiles) fileSet.add(f);
+      existing.files = [...fileSet];
+    } else {
+      commitMap.set(hash, {
         hash,
-        shortHash: lines[1].trim(),
-        author: lines[2].trim(),
-        authorEmail: lines[3].trim(),
-        date: lines[4].trim(),
-        subject: lines[5].trim(),
-        body: lines.slice(6).join('\n').trim(),
-        files,
+        shortHash,
+        author,
+        authorEmail,
+        date,
+        subject,
+        body,
+        files: [...new Set(blockFiles)],
       });
     }
   }
+
+  // Trim to the requested limit (we over-fetched to account for -m duplicates)
+  const commits = [...commitMap.values()].slice(0, commitLimit);
 
   // If branchName wasn't specified, get current branch for display
   let displayBranch = branchName;

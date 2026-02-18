@@ -63,6 +63,14 @@ export class WorktreeService {
     for (const relativePath of copyFiles) {
       // Security: prevent path traversal
       const normalized = path.normalize(relativePath);
+      if (normalized === '' || normalized === '.') {
+        const reason = 'Suspicious path rejected (empty or current-dir)';
+        emitter.emit('worktree:copy-files:skipped', {
+          path: relativePath,
+          reason,
+        });
+        continue;
+      }
       if (normalized.startsWith('..') || path.isAbsolute(normalized)) {
         const reason = 'Suspicious path rejected (traversal or absolute)';
         emitter.emit('worktree:copy-files:skipped', {

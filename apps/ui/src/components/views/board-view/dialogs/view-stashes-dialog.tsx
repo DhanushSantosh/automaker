@@ -21,6 +21,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { getHttpApiClient } from '@/lib/http-api-client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { StashApplyConflictDialog } from './stash-apply-conflict-dialog';
+import type { StashApplyConflictInfo } from '../worktree-panel/types';
 
 interface WorktreeInfo {
   path: string;
@@ -43,6 +45,7 @@ interface ViewStashesDialogProps {
   onOpenChange: (open: boolean) => void;
   worktree: WorktreeInfo | null;
   onStashApplied?: () => void;
+  onStashApplyConflict?: (conflictInfo: StashApplyConflictInfo) => void;
 }
 
 function formatRelativeDate(dateStr: string): string {
@@ -213,12 +216,15 @@ export function ViewStashesDialog({
   onOpenChange,
   worktree,
   onStashApplied,
+  onStashApplyConflict,
 }: ViewStashesDialogProps) {
   const [stashes, setStashes] = useState<StashEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [applyingIndex, setApplyingIndex] = useState<number | null>(null);
   const [droppingIndex, setDroppingIndex] = useState<number | null>(null);
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
+  const [conflictInfo, setConflictInfo] = useState<StashApplyConflictInfo | null>(null);
 
   const fetchStashes = useCallback(async () => {
     if (!worktree) return;
@@ -262,13 +268,20 @@ export function ViewStashesDialog({
 
       if (result.success && result.result) {
         if (result.result.hasConflicts) {
-          toast.warning('Stash applied with conflicts', {
-            description: 'Please resolve the merge conflicts.',
-          });
+          const info: StashApplyConflictInfo = {
+            worktreePath: worktree.path,
+            branchName: worktree.branch,
+            stashRef: `stash@{${stashIndex}}`,
+            operation: 'apply',
+            conflictFiles: result.result.conflictFiles || [],
+          };
+          setConflictInfo(info);
+          setConflictDialogOpen(true);
+          onStashApplied?.();
         } else {
           toast.success('Stash applied');
+          onStashApplied?.();
         }
-        onStashApplied?.();
       } else {
         toast.error('Failed to apply stash', {
           description: result.error || 'Unknown error',
@@ -293,9 +306,15 @@ export function ViewStashesDialog({
 
       if (result.success && result.result) {
         if (result.result.hasConflicts) {
-          toast.warning('Stash popped with conflicts', {
-            description: 'Please resolve the merge conflicts. The stash was removed.',
-          });
+          const info: StashApplyConflictInfo = {
+            worktreePath: worktree.path,
+            branchName: worktree.branch,
+            stashRef: `stash@{${stashIndex}}`,
+            operation: 'pop',
+            conflictFiles: result.result.conflictFiles || [],
+          };
+          setConflictInfo(info);
+          setConflictDialogOpen(true);
         } else {
           toast.success('Stash popped', {
             description: 'Changes applied and stash removed.',
@@ -403,6 +422,14 @@ export function ViewStashesDialog({
           </div>
         </div>
       </DialogContent>
+
+      {/* Stash Apply Conflict Resolution Dialog */}
+      <StashApplyConflictDialog
+        open={conflictDialogOpen}
+        onOpenChange={setConflictDialogOpen}
+        conflictInfo={conflictInfo}
+        onResolveWithAI={onStashApplyConflict}
+      />
     </Dialog>
   );
 }

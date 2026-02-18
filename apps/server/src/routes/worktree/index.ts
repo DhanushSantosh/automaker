@@ -62,6 +62,7 @@ import { createStashDropHandler } from './routes/stash-drop.js';
 import { createCherryPickHandler } from './routes/cherry-pick.js';
 import { createBranchCommitLogHandler } from './routes/branch-commit-log.js';
 import { createGeneratePRDescriptionHandler } from './routes/generate-pr-description.js';
+import { createRebaseHandler } from './routes/rebase.js';
 import type { SettingsService } from '../../services/settings-service.js';
 
 export function createWorktreeRoutes(
@@ -260,6 +261,14 @@ export function createWorktreeRoutes(
     validatePathParams('worktreePath'),
     requireValidWorktree,
     createBranchCommitLogHandler(events)
+  );
+
+  // Rebase route
+  router.post(
+    '/rebase',
+    validatePathParams('worktreePath'),
+    requireValidWorktree,
+    createRebaseHandler(events)
   );
 
   return router;

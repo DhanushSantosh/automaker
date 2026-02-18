@@ -22,7 +22,8 @@ export const execAsync = promisify(exec);
  * @param args - Array of git command arguments (e.g., ['worktree', 'add', path])
  * @param cwd - Working directory to execute the command in
  * @returns Promise resolving to stdout output
- * @throws Error with stderr message if command fails
+ * @throws Error with stderr/stdout message if command fails. The thrown error
+ *   also has `stdout` and `stderr` string properties for structured access.
  *
  * @example
  * ```typescript
@@ -44,8 +45,12 @@ export async function execGitCommand(args: string[], cwd: string): Promise<strin
   if (result.exitCode === 0) {
     return result.stdout;
   } else {
-    const errorMessage = result.stderr || `Git command failed with code ${result.exitCode}`;
-    throw new Error(errorMessage);
+    const errorMessage =
+      result.stderr || result.stdout || `Git command failed with code ${result.exitCode}`;
+    throw Object.assign(new Error(errorMessage), {
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
   }
 }
 

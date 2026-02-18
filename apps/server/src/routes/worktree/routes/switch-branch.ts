@@ -193,11 +193,18 @@ export function createSwitchBranchHandler() {
       let isRemote = false;
 
       // Check if this is a remote branch (e.g., "origin/feature-branch")
+      let parsedRemote: { remote: string; branch: string } | null = null;
       if (await isRemoteBranch(worktreePath, branchName)) {
         isRemote = true;
-        const parsed = parseRemoteBranch(branchName);
-        if (parsed) {
-          targetBranch = parsed.branch;
+        parsedRemote = parseRemoteBranch(branchName);
+        if (parsedRemote) {
+          targetBranch = parsedRemote.branch;
+        } else {
+          res.status(400).json({
+            success: false,
+            error: `Failed to parse remote branch name '${branchName}'`,
+          });
+          return;
         }
       }
 
@@ -240,17 +247,17 @@ export function createSwitchBranchHandler() {
       try {
         // Switch to the target branch
         if (isRemote) {
-          const parsed = parseRemoteBranch(branchName);
-          if (parsed) {
-            if (await localBranchExists(worktreePath, parsed.branch)) {
-              // Local branch exists, just checkout
-              await execFileAsync('git', ['checkout', parsed.branch], { cwd: worktreePath });
-            } else {
-              // Create local tracking branch from remote
-              await execFileAsync('git', ['checkout', '-b', parsed.branch, branchName], {
-                cwd: worktreePath,
-              });
-            }
+          if (!parsedRemote) {
+            throw new Error(`Failed to parse remote branch name '${branchName}'`);
+          }
+          if (await localBranchExists(worktreePath, parsedRemote.branch)) {
+            // Local branch exists, just checkout
+            await execFileAsync('git', ['checkout', parsedRemote.branch], { cwd: worktreePath });
+          } else {
+            // Create local tracking branch from remote
+            await execFileAsync('git', ['checkout', '-b', parsedRemote.branch, branchName], {
+              cwd: worktreePath,
+            });
           }
         } else {
           await execFileAsync('git', ['checkout', targetBranch], { cwd: worktreePath });
@@ -262,15 +269,18 @@ export function createSwitchBranchHandler() {
         // Reapply stashed changes if we stashed earlier
         let hasConflicts = false;
         let conflictMessage = '';
+        let stashReapplied = false;
 
         if (didStash) {
           const popResult = await popStash(worktreePath);
+          hasConflicts = popResult.hasConflicts;
           if (popResult.hasConflicts) {
-            hasConflicts = true;
             conflictMessage = `Switched to branch '${targetBranch}' but merge conflicts occurred when reapplying your local changes. Please resolve the conflicts.`;
           } else if (!popResult.success) {
             // Stash pop failed for a non-conflict reason - the stash is still there
             conflictMessage = `Switched to branch '${targetBranch}' but failed to reapply stashed changes: ${popResult.error}. Your changes are still in the stash.`;
+          } else {
+            stashReapplied = true;
           }
         }
 
@@ -285,8 +295,20 @@ export function createSwitchBranchHandler() {
               stashedChanges: true,
             },
           });
+        } else if (didStash && !stashReapplied) {
+          // Stash pop failed for a non-conflict reason — stash is still present
+          res.json({
+            success: true,
+            result: {
+              previousBranch,
+              currentBranch: targetBranch,
+              message: conflictMessage,
+              hasConflicts: false,
+              stashedChanges: true,
+            },
+          });
         } else {
-          const stashNote = didStash ? ' (local changes stashed and reapplied)' : '';
+          const stashNote = stashReapplied ? ' (local changes stashed and reapplied)' : '';
           res.json({
             success: true,
             result: {
@@ -294,7 +316,7 @@ export function createSwitchBranchHandler() {
               currentBranch: targetBranch,
               message: `Switched to branch '${targetBranch}'${stashNote}`,
               hasConflicts: false,
-              stashedChanges: didStash,
+              stashedChanges: stashReapplied,
             },
           });
         }

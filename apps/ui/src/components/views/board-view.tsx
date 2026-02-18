@@ -69,6 +69,7 @@ import type {
   MergeConflictInfo,
   BranchSwitchConflictInfo,
   StashPopConflictInfo,
+  StashApplyConflictInfo,
 } from './board-view/worktree-panel/types';
 import { COLUMNS, getColumnsWithPipeline } from './board-view/constants';
 import {
@@ -984,14 +985,26 @@ export function BoardView() {
     [handleAddFeature, handleStartImplementation, defaultSkipTests]
   );
 
-  // Handler called when merge fails due to conflicts and user wants to create a feature to resolve them
+  // Handler called when merge/rebase fails due to conflicts and user wants to create a feature to resolve them
   const handleCreateMergeConflictResolutionFeature = useCallback(
     async (conflictInfo: MergeConflictInfo) => {
-      const description = `Resolve merge conflicts when merging "${conflictInfo.sourceBranch}" into "${conflictInfo.targetBranch}". The merge was started but encountered conflicts that need to be resolved manually. After resolving all conflicts, ensure the code compiles and tests pass, then complete the merge by committing the resolved changes.`;
+      const isRebase = conflictInfo.operationType === 'rebase';
+      const conflictFilesInfo =
+        conflictInfo.conflictFiles && conflictInfo.conflictFiles.length > 0
+          ? `\n\nConflicting files:\n${conflictInfo.conflictFiles.map((f) => `- ${f}`).join('\n')}`
+          : '';
+
+      const description = isRebase
+        ? `Fetch the latest changes from ${conflictInfo.sourceBranch} and rebase the current branch (${conflictInfo.targetBranch}) onto ${conflictInfo.sourceBranch}. Use "git fetch" followed by "git rebase ${conflictInfo.sourceBranch}" to replay commits on top of the remote branch for a linear history. If rebase conflicts arise, resolve them one commit at a time using "git rebase --continue" after fixing each conflict. After completing the rebase, ensure the code compiles and tests pass.${conflictFilesInfo}`
+        : `Resolve merge conflicts when merging "${conflictInfo.sourceBranch}" into "${conflictInfo.targetBranch}". The merge was started but encountered conflicts that need to be resolved manually. After resolving all conflicts, ensure the code compiles and tests pass, then complete the merge by committing the resolved changes.${conflictFilesInfo}`;
+
+      const title = isRebase
+        ? `Rebase & Resolve Conflicts: ${conflictInfo.targetBranch} onto ${conflictInfo.sourceBranch}`
+        : `Resolve Merge Conflicts: ${conflictInfo.sourceBranch} → ${conflictInfo.targetBranch}`;
 
       // Create the feature
       const featureData = {
-        title: `Resolve Merge Conflicts: ${conflictInfo.sourceBranch} → ${conflictInfo.targetBranch}`,
+        title,
         category: 'Maintenance',
         description,
         images: [],
@@ -1133,6 +1146,70 @@ export function BoardView() {
       } else {
         logger.error(
           'Could not find newly created stash-pop conflict feature to start it automatically.'
+        );
+        toast.error('Failed to auto-start feature', {
+          description: 'The feature was created but could not be started automatically.',
+        });
+      }
+    },
+    [handleAddFeature, handleStartImplementation, defaultSkipTests]
+  );
+
+  // Handler called when stash apply/pop results in merge conflicts and user wants AI resolution
+  const handleStashApplyConflict = useCallback(
+    async (conflictInfo: StashApplyConflictInfo) => {
+      const operationLabel = conflictInfo.operation === 'pop' ? 'popping' : 'applying';
+      const conflictFilesList =
+        conflictInfo.conflictFiles.length > 0
+          ? `\n\nConflicted files:\n${conflictInfo.conflictFiles.map((f) => `- ${f}`).join('\n')}`
+          : '';
+
+      const description =
+        `Resolve merge conflicts that occurred when ${operationLabel} stash "${conflictInfo.stashRef}" ` +
+        `on branch "${conflictInfo.branchName}". ` +
+        `The stash was ${conflictInfo.operation === 'pop' ? 'popped' : 'applied'} but resulted in merge conflicts ` +
+        `that need to be resolved. Please review all conflicted files, resolve the conflicts, ` +
+        `ensure the code compiles and tests pass, then commit the resolved changes.` +
+        conflictFilesList;
+
+      // Create the feature
+      const featureData = {
+        title: `Resolve Stash Apply Conflicts: ${conflictInfo.stashRef} on ${conflictInfo.branchName}`,
+        category: 'Maintenance',
+        description,
+        images: [],
+        imagePaths: [],
+        skipTests: defaultSkipTests,
+        model: 'opus' as const,
+        thinkingLevel: 'none' as const,
+        branchName: conflictInfo.branchName,
+        workMode: 'custom' as const,
+        priority: 1, // High priority for conflict resolution
+        planningMode: 'skip' as const,
+        requirePlanApproval: false,
+      };
+
+      // Capture existing feature IDs before adding
+      const featuresBeforeIds = new Set(useAppStore.getState().features.map((f) => f.id));
+      try {
+        await handleAddFeature(featureData);
+      } catch (error) {
+        logger.error('Failed to create stash apply conflict resolution feature:', error);
+        toast.error('Failed to create feature', {
+          description: error instanceof Error ? error.message : 'An error occurred',
+        });
+        return;
+      }
+
+      // Find the newly created feature by looking for an ID that wasn't in the original set
+      const latestFeatures = useAppStore.getState().features;
+      const newFeature = latestFeatures.find((f) => !featuresBeforeIds.has(f.id));
+
+      if (newFeature) {
+        await handleStartImplementation(newFeature);
+      } else {
+        logger.error(
+          'Could not find newly created stash apply conflict feature to start it automatically.'
         );
         toast.error('Failed to auto-start feature', {
           description: 'The feature was created but could not be started automatically.',
@@ -1583,6 +1660,7 @@ export function BoardView() {
             onCreateMergeConflictResolutionFeature={handleCreateMergeConflictResolutionFeature}
             onBranchSwitchConflict={handleBranchSwitchConflict}
             onStashPopConflict={handleStashPopConflict}
+            onStashApplyConflict={handleStashApplyConflict}
             onBranchDeletedDuringMerge={(branchName) => {
               // Reset features that were assigned to the deleted branch (same logic as onDeleted in DeleteWorktreeDialog)
               hookFeatures.forEach((feature) => {
@@ -1995,6 +2073,7 @@ export function BoardView() {
         onOpenChange={setShowMergeRebaseDialog}
         worktree={selectedWorktreeForAction}
         onConfirm={handleConfirmResolveConflicts}
+        onCreateConflictResolutionFeature={handleCreateMergeConflictResolutionFeature}
       />
 
       {/* Commit Worktree Dialog */}

@@ -21,4 +21,6 @@ export { ExportFeaturesDialog } from './export-features-dialog';
 export { ImportFeaturesDialog } from './import-features-dialog';
 export { StashChangesDialog } from './stash-changes-dialog';
 export { ViewStashesDialog } from './view-stashes-dialog';
+export { StashApplyConflictDialog } from './stash-apply-conflict-dialog';
 export { CherryPickDialog } from './cherry-pick-dialog';
+export { GitPullDialog } from './git-pull-dialog';

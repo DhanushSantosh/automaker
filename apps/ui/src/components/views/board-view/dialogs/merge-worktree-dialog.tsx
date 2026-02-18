@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { GitMerge, AlertTriangle, Trash2, Wrench } from 'lucide-react';
+import { GitMerge, AlertTriangle, Trash2, Wrench, Sparkles, XCircle } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { getElectronAPI } from '@/lib/electron';
 import { toast } from 'sonner';
@@ -116,17 +116,20 @@ export function MergeWorktreeDialog({
         const hasConflicts =
           errorMessage.toLowerCase().includes('conflict') ||
           errorMessage.toLowerCase().includes('merge failed') ||
-          errorMessage.includes('CONFLICT');
+          errorMessage.includes('CONFLICT') ||
+          result.hasConflicts;
 
-        if (hasConflicts && onCreateConflictResolutionFeature) {
+        if (hasConflicts) {
           // Set merge conflict state to show the conflict resolution UI
           setMergeConflict({
             sourceBranch: worktree.branch,
             targetBranch: targetBranch,
             targetWorktreePath: projectPath, // The merge happens in the target branch's worktree
+            conflictFiles: result.conflictFiles || [],
+            operationType: 'merge',
           });
           toast.error('Merge conflicts detected', {
-            description: 'The merge has conflicts that need to be resolved manually.',
+            description: 'Choose how to resolve the conflicts below.',
           });
         } else {
           toast.error('Failed to merge branch', {
@@ -142,14 +145,16 @@ export function MergeWorktreeDialog({
         errorMessage.toLowerCase().includes('merge failed') ||
         errorMessage.includes('CONFLICT');
 
-      if (hasConflicts && onCreateConflictResolutionFeature) {
+      if (hasConflicts) {
         setMergeConflict({
           sourceBranch: worktree.branch,
           targetBranch: targetBranch,
           targetWorktreePath: projectPath,
+          conflictFiles: [],
+          operationType: 'merge',
         });
         toast.error('Merge conflicts detected', {
-          description: 'The merge has conflicts that need to be resolved manually.',
+          description: 'Choose how to resolve the conflicts below.',
         });
       } else {
         toast.error('Failed to merge branch', {
@@ -161,11 +166,19 @@ export function MergeWorktreeDialog({
     }
   };
 
-  const handleCreateConflictResolutionFeature = () => {
+  const handleResolveWithAI = () => {
     if (mergeConflict && onCreateConflictResolutionFeature) {
       onCreateConflictResolutionFeature(mergeConflict);
       onOpenChange(false);
     }
+  };
+
+  const handleResolveManually = () => {
+    toast.info('Conflict markers left in place', {
+      description: 'Edit the conflicting files to resolve conflicts manually.',
+      duration: 6000,
+    });
+    onOpenChange(false);
   };
 
   if (!worktree) return null;
@@ -174,7 +187,7 @@ export function MergeWorktreeDialog({
   if (mergeConflict) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-orange-500" />
@@ -194,32 +207,38 @@ export function MergeWorktreeDialog({
                   .
                 </span>
 
-                <div className="flex items-start gap-2 p-3 rounded-md bg-orange-500/10 border border-orange-500/20">
-                  <AlertTriangle className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />
-                  <span className="text-orange-500 text-sm">
-                    The merge could not be completed automatically. You can create a feature task to
-                    resolve the conflicts in the{' '}
-                    <code className="font-mono bg-muted px-0.5 rounded">
-                      {mergeConflict.targetBranch}
-                    </code>{' '}
-                    branch.
-                  </span>
-                </div>
+                {mergeConflict.conflictFiles && mergeConflict.conflictFiles.length > 0 && (
+                  <div className="space-y-1.5">
+                    <span className="text-sm font-medium text-foreground">
+                      Conflicting files ({mergeConflict.conflictFiles.length}):
+                    </span>
+                    <div className="border border-border rounded-lg overflow-hidden max-h-[200px] overflow-y-auto scrollbar-visible">
+                      {mergeConflict.conflictFiles.map((file) => (
+                        <div
+                          key={file}
+                          className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono border-b border-border last:border-b-0 hover:bg-accent/30"
+                        >
+                          <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                          <span className="truncate">{file}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-2 p-3 rounded-md bg-muted/50 border border-border">
-                  <p className="text-sm text-muted-foreground">
-                    This will create a high-priority feature task that will:
+                  <p className="text-sm text-muted-foreground font-medium mb-2">
+                    Choose how to resolve:
                   </p>
-                  <ul className="text-sm text-muted-foreground mt-2 list-disc list-inside space-y-1">
+                  <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
                     <li>
-                      Resolve merge conflicts in the{' '}
-                      <code className="font-mono bg-muted px-0.5 rounded">
-                        {mergeConflict.targetBranch}
-                      </code>{' '}
-                      branch
+                      <strong>Resolve with AI</strong> &mdash; Creates a task to analyze and resolve
+                      conflicts automatically
                     </li>
-                    <li>Ensure the code compiles and tests pass</li>
-                    <li>Complete the merge automatically</li>
+                    <li>
+                      <strong>Resolve Manually</strong> &mdash; Leaves conflict markers in place for
+                      you to edit directly
+                    </li>
                   </ul>
                 </div>
               </div>
@@ -230,16 +249,19 @@ export function MergeWorktreeDialog({
             <Button variant="ghost" onClick={() => setMergeConflict(null)}>
               Back
             </Button>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreateConflictResolutionFeature}
-              className="bg-purple-600 hover:bg-purple-700 text-white"
-            >
+            <Button variant="outline" onClick={handleResolveManually}>
               <Wrench className="w-4 h-4 mr-2" />
-              Create Resolve Conflicts Feature
+              Resolve Manually
             </Button>
+            {onCreateConflictResolutionFeature && (
+              <Button
+                onClick={handleResolveWithAI}
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                Resolve with AI
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

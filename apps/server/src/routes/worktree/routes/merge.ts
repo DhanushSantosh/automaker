@@ -75,11 +75,27 @@ export function createMergeHandler() {
           output.includes('CONFLICT') || output.includes('Automatic merge failed');
 
         if (hasConflicts) {
+          // Get list of conflicted files
+          let conflictFiles: string[] = [];
+          try {
+            const diffOutput = await execGitCommand(
+              ['diff', '--name-only', '--diff-filter=U'],
+              projectPath
+            );
+            conflictFiles = diffOutput
+              .trim()
+              .split('\n')
+              .filter((f: string) => f.trim().length > 0);
+          } catch {
+            // If we can't get the file list, that's okay
+          }
+
           // Return conflict-specific error message that frontend can detect
           res.status(409).json({
             success: false,
             error: `Merge CONFLICT: Automatic merge of "${branchName}" into "${mergeTo}" failed. Please resolve conflicts manually.`,
             hasConflicts: true,
+            conflictFiles,
           });
           return;
         }

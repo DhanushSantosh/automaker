@@ -15,6 +15,24 @@ import { getErrorMessage, logError } from '../common.js';
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * Retrieves the list of files with unmerged (conflicted) entries using git diff.
+ */
+async function getConflictedFiles(worktreePath: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync('git', ['diff', '--name-only', '--diff-filter=U'], {
+      cwd: worktreePath,
+    });
+    return stdout
+      .trim()
+      .split('\n')
+      .filter((f) => f.trim().length > 0);
+  } catch {
+    // If we can't get the file list, return empty array
+    return [];
+  }
+}
+
 export function createStashApplyHandler() {
   return async (req: Request, res: Response): Promise<void> => {
     try {
@@ -62,11 +80,13 @@ export function createStashApplyHandler() {
 
         // Check for conflict markers in the output
         if (output.includes('CONFLICT') || output.includes('Merge conflict')) {
+          const conflictFiles = await getConflictedFiles(worktreePath);
           res.json({
             success: true,
             result: {
               applied: true,
               hasConflicts: true,
+              conflictFiles,
               operation,
               stashIndex,
               message: `Stash ${operation === 'pop' ? 'popped' : 'applied'} with conflicts. Please resolve the conflicts.`,
@@ -90,11 +110,13 @@ export function createStashApplyHandler() {
 
         // Check if the error is due to conflicts
         if (errorMsg.includes('CONFLICT') || errorMsg.includes('Merge conflict')) {
+          const conflictFiles = await getConflictedFiles(worktreePath);
           res.json({
             success: true,
             result: {
               applied: true,
               hasConflicts: true,
+              conflictFiles,
               operation,
               stashIndex,
               message: `Stash ${operation === 'pop' ? 'popped' : 'applied'} with conflicts. Please resolve the conflicts.`,

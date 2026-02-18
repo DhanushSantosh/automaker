@@ -78,6 +78,10 @@ export interface MergeConflictInfo {
   sourceBranch: string;
   targetBranch: string;
   targetWorktreePath: string;
+  /** List of files with conflicts, if available */
+  conflictFiles?: string[];
+  /** Type of operation that caused the conflict */
+  operationType?: 'merge' | 'rebase';
 }
 
 export interface BranchSwitchConflictInfo {
@@ -91,6 +95,15 @@ export interface StashPopConflictInfo {
   worktreePath: string;
   branchName: string;
   stashPopConflictMessage: string;
+}
+
+/** Info passed when a stash apply/pop operation results in merge conflicts */
+export interface StashApplyConflictInfo {
+  worktreePath: string;
+  branchName: string;
+  stashRef: string;
+  operation: 'apply' | 'pop';
+  conflictFiles: string[];
 }
 
 export interface WorktreePanelProps {
@@ -107,6 +120,8 @@ export interface WorktreePanelProps {
   onBranchSwitchConflict?: (conflictInfo: BranchSwitchConflictInfo) => void;
   /** Called when checkout fails and the stash-pop restoration itself produces merge conflicts */
   onStashPopConflict?: (conflictInfo: StashPopConflictInfo) => void;
+  /** Called when stash apply/pop results in merge conflicts and user wants AI resolution */
+  onStashApplyConflict?: (conflictInfo: StashApplyConflictInfo) => void;
   /** Called when a branch is deleted during merge - features should be reassigned to main */
   onBranchDeletedDuringMerge?: (branchName: string) => void;
   onRemovedWorktrees?: (removedWorktrees: Array<{ path: string; branch: string }>) => void;

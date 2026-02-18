@@ -158,16 +158,28 @@ export function usePushWorktree() {
 /**
  * Pull changes from remote
  *
+ * Enhanced to support stash management. When stashIfNeeded is true,
+ * local changes will be automatically stashed before pulling and
+ * reapplied afterward.
+ *
  * @returns Mutation for pulling changes
  */
 export function usePullWorktree() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ worktreePath, remote }: { worktreePath: string; remote?: string }) => {
+    mutationFn: async ({
+      worktreePath,
+      remote,
+      stashIfNeeded,
+    }: {
+      worktreePath: string;
+      remote?: string;
+      stashIfNeeded?: boolean;
+    }) => {
       const api = getElectronAPI();
       if (!api.worktree) throw new Error('Worktree API not available');
-      const result = await api.worktree.pull(worktreePath, remote);
+      const result = await api.worktree.pull(worktreePath, remote, stashIfNeeded);
       if (!result.success) {
         throw new Error(result.error || 'Failed to pull changes');
       }

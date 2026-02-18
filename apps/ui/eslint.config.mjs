@@ -2,6 +2,7 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 import js from '@eslint/js';
 import ts from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
+import reactHooks from 'eslint-plugin-react-hooks';
 
 const eslintConfig = defineConfig([
   js.configs.recommended,
@@ -122,9 +123,11 @@ const eslintConfig = defineConfig([
     },
     plugins: {
       '@typescript-eslint': ts,
+      'react-hooks': reactHooks,
     },
     rules: {
       ...ts.configs.recommended.rules,
+      'react-hooks/exhaustive-deps': 'warn',
       '@typescript-eslint/no-unused-vars': [
         'warn',
         {

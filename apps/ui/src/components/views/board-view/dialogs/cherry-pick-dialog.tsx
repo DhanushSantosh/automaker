@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -149,6 +149,9 @@ export function CherryPickDialog({
   const [commitLimit, setCommitLimit] = useState(30);
   const [hasMoreCommits, setHasMoreCommits] = useState(false);
 
+  // Ref to track the latest fetchCommits request and ignore stale responses
+  const fetchCommitsRequestRef = useRef(0);
+
   // Cherry-pick state
   const [isCherryPicking, setIsCherryPicking] = useState(false);
 
@@ -182,6 +185,8 @@ export function CherryPickDialog({
   useEffect(() => {
     if (!open || !worktree) return;
 
+    let mounted = true;
+
     const fetchBranchData = async () => {
       setLoadingBranches(true);
       try {
@@ -192,6 +197,8 @@ export function CherryPickDialog({
           api.worktree.listRemotes(worktree.path),
           api.worktree.listBranches(worktree.path, false),
         ]);
+
+        if (!mounted) return;
 
         if (remotesResult.success && remotesResult.result) {
           setRemotes(remotesResult.result.remotes);
@@ -212,19 +219,29 @@ export function CherryPickDialog({
           setLocalBranches(branches);
         }
       } catch (err) {
+        if (!mounted) return;
         console.error('Failed to fetch branch data:', err);
       } finally {
-        setLoadingBranches(false);
+        if (mounted) {
+          setLoadingBranches(false);
+        }
       }
     };
 
     fetchBranchData();
+
+    return () => {
+      mounted = false;
+    };
   }, [open, worktree]);
 
   // Fetch commits when branch is selected
   const fetchCommits = useCallback(
     async (limit: number = 30, append: boolean = false) => {
       if (!worktree || !selectedBranch) return;
+
+      // Increment the request counter and capture the current request ID
+      const requestId = ++fetchCommitsRequestRef.current;
 
       if (append) {
         setLoadingMoreCommits(true);
@@ -239,18 +256,28 @@ export function CherryPickDialog({
         const api = getHttpApiClient();
         const result = await api.worktree.getBranchCommitLog(worktree.path, selectedBranch, limit);
 
+        // Ignore stale responses from superseded requests
+        if (requestId !== fetchCommitsRequestRef.current) return;
+
         if (result.success && result.result) {
           setCommits(result.result.commits);
           // If we got exactly the limit, there may be more commits
           setHasMoreCommits(result.result.commits.length >= limit);
-        } else {
+        } else if (!append) {
           setCommitsError(result.error || 'Failed to load commits');
         }
       } catch (err) {
-        setCommitsError(err instanceof Error ? err.message : 'Failed to load commits');
+        // Ignore stale responses from superseded requests
+        if (requestId !== fetchCommitsRequestRef.current) return;
+        if (!append) {
+          setCommitsError(err instanceof Error ? err.message : 'Failed to load commits');
+        }
       } finally {
-        setLoadingCommits(false);
-        setLoadingMoreCommits(false);
+        // Only update loading state if this is still the current request
+        if (requestId === fetchCommitsRequestRef.current) {
+          setLoadingCommits(false);
+          setLoadingMoreCommits(false);
+        }
       }
     },
     [worktree, selectedBranch]
@@ -384,6 +411,7 @@ export function CherryPickDialog({
         sourceBranch: selectedBranch,
         targetBranch: conflictInfo.targetBranch,
         targetWorktreePath: conflictInfo.targetWorktreePath,
+        operationType: 'merge',
       });
       onOpenChange(false);
     }
@@ -703,7 +731,7 @@ export function CherryPickDialog({
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select source..." />
                         </SelectTrigger>
-                        <SelectContent className="text-black dark:text-black">
+                        <SelectContent className="text-foreground">
                           <SelectItem value="__local__">Local Branches</SelectItem>
                           {remotes.map((remote) => (
                             <SelectItem key={remote.name} value={remote.name}>
@@ -725,7 +753,7 @@ export function CherryPickDialog({
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select a branch..." />
                         </SelectTrigger>
-                        <SelectContent className="text-black dark:text-black">
+                        <SelectContent className="text-foreground">
                           {branchOptions.map((branch) => (
                             <SelectItem key={branch} value={branch}>
                               {branch}

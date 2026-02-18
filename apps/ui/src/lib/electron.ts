@@ -2259,15 +2259,23 @@ function createMockWorktreeAPI(): WorktreeAPI {
       };
     },
 
-    pull: async (worktreePath: string, remote?: string) => {
+    pull: async (worktreePath: string, remote?: string, stashIfNeeded?: boolean) => {
       const targetRemote = remote || 'origin';
-      console.log('[Mock] Pulling latest changes for:', { worktreePath, remote: targetRemote });
+      console.log('[Mock] Pulling latest changes for:', {
+        worktreePath,
+        remote: targetRemote,
+        stashIfNeeded,
+      });
       return {
         success: true,
         result: {
           branch: 'main',
           pulled: true,
           message: `Pulled latest changes from ${targetRemote}`,
+          hasLocalChanges: false,
+          hasConflicts: false,
+          stashed: false,
+          stashRestored: false,
         },
       };
     },
@@ -2696,6 +2704,7 @@ function createMockWorktreeAPI(): WorktreeAPI {
         result: {
           applied: true,
           hasConflicts: false,
+          conflictFiles: [] as string[],
           operation: pop ? ('pop' as const) : ('apply' as const),
           stashIndex,
           message: `Stash ${pop ? 'popped' : 'applied'} successfully`,
@@ -2737,6 +2746,17 @@ function createMockWorktreeAPI(): WorktreeAPI {
           branch: branchName || 'main',
           commits: [],
           total: 0,
+        },
+      };
+    },
+    rebase: async (worktreePath: string, ontoBranch: string) => {
+      console.log('[Mock] Rebase:', { worktreePath, ontoBranch });
+      return {
+        success: true,
+        result: {
+          branch: 'current-branch',
+          ontoBranch,
+          message: `Successfully rebased onto ${ontoBranch}`,
         },
       };
     },

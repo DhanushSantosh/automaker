@@ -793,6 +793,25 @@ export interface WorktreeAPI {
       branchDeleted: boolean;
     };
     error?: string;
+    hasConflicts?: boolean;
+    conflictFiles?: string[];
+  }>;
+
+  // Rebase the current branch onto a target branch
+  rebase: (
+    worktreePath: string,
+    ontoBranch: string
+  ) => Promise<{
+    success: boolean;
+    result?: {
+      branch: string;
+      ontoBranch: string;
+      message: string;
+    };
+    error?: string;
+    hasConflicts?: boolean;
+    conflictFiles?: string[];
+    aborted?: boolean;
   }>;
 
   // Get worktree info for a feature
@@ -966,16 +985,24 @@ export interface WorktreeAPI {
     filePath: string
   ) => Promise<FileDiffResult>;
 
-  // Pull latest changes from remote
+  // Pull latest changes from remote with optional stash management
   pull: (
     worktreePath: string,
-    remote?: string
+    remote?: string,
+    stashIfNeeded?: boolean
   ) => Promise<{
     success: boolean;
     result?: {
       branch: string;
       pulled: boolean;
       message: string;
+      hasLocalChanges?: boolean;
+      localChangedFiles?: string[];
+      hasConflicts?: boolean;
+      conflictSource?: 'pull' | 'stash';
+      conflictFiles?: string[];
+      stashed?: boolean;
+      stashRestored?: boolean;
     };
     error?: string;
     code?: 'NOT_GIT_REPO' | 'NO_COMMITS';
@@ -1490,6 +1517,7 @@ export interface WorktreeAPI {
     result?: {
       applied: boolean;
       hasConflicts: boolean;
+      conflictFiles?: string[];
       operation: 'apply' | 'pop';
       stashIndex: number;
       message: string;

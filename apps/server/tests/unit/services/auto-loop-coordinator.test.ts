@@ -887,15 +887,15 @@ describe('auto-loop-coordinator.ts', () => {
       );
     });
 
-    it('uses pending features as fallback when loadAllFeaturesFn is null and executes eligible feature with satisfied dependencies', async () => {
-      // Create a completed dependency feature (will be in pendingFeatures as the allFeatures fallback)
-      const completedDep: Feature = {
+    it('bypasses dependency checks when loadAllFeaturesFn is omitted', async () => {
+      // Create a dependency feature that is NOT completed (in_progress)
+      const inProgressDep: Feature = {
         ...testFeature,
         id: 'dep-feature',
-        status: 'completed',
-        title: 'Completed Dependency',
+        status: 'in_progress',
+        title: 'In-Progress Dependency',
       };
-      // Create a pending feature that depends on the completed dep
+      // Create a pending feature that depends on the in-progress dep
       const pendingFeatureWithDep: Feature = {
         ...testFeature,
         id: 'feature-with-dep',
@@ -904,7 +904,8 @@ describe('auto-loop-coordinator.ts', () => {
         title: 'Feature With Dependency',
       };
 
-      // loadAllFeaturesFn is NOT provided (null) so allFeatures falls back to pendingFeatures
+      // loadAllFeaturesFn is NOT provided, so dependency checks are bypassed entirely
+      // (the coordinator returns true instead of calling areDependenciesSatisfied)
       const coordWithoutLoadAll = new AutoLoopCoordinator(
         mockEventBus,
         mockConcurrencyManager,
@@ -916,30 +917,35 @@ describe('auto-loop-coordinator.ts', () => {
         mockResetStuckFeatures,
         mockIsFeatureFinished,
         mockIsFeatureRunning
-        // loadAllFeaturesFn omitted (undefined/null)
+        // loadAllFeaturesFn omitted
       );
 
-      // pendingFeatures includes both the completed dep and the pending feature;
-      // since loadAllFeaturesFn is absent, allFeatures = pendingFeatures,
-      // so areDependenciesSatisfied can find 'dep-feature' with status 'completed'
-      vi.mocked(mockLoadPendingFeatures).mockResolvedValue([completedDep, pendingFeatureWithDep]);
+      // pendingFeatures includes the in-progress dep and the pending feature;
+      // since loadAllFeaturesFn is absent, dependency checks are bypassed,
+      // so pendingFeatureWithDep is eligible even though its dependency is not completed
+      vi.mocked(mockLoadPendingFeatures).mockResolvedValue([inProgressDep, pendingFeatureWithDep]);
       vi.mocked(mockConcurrencyManager.getRunningCountForWorktree).mockResolvedValue(0);
-      // The completed dep is finished, so it is filtered from eligible candidates;
-      // the pending feature with the satisfied dependency should be scheduled
-      vi.mocked(mockIsFeatureFinished).mockImplementation((f: Feature) => f.id === 'dep-feature');
+      // The in-progress dep is not finished and not running, so both features pass the
+      // isFeatureFinished filter; but only pendingFeatureWithDep should be executed
+      // because we mark dep-feature as running to prevent it from being picked
+      vi.mocked(mockIsFeatureFinished).mockReturnValue(false);
+      vi.mocked(mockIsFeatureRunning as ReturnType<typeof vi.fn>).mockImplementation(
+        (id: string) => id === 'dep-feature'
+      );
 
       await coordWithoutLoadAll.startAutoLoopForProject('/test/project', null, 1);
       await vi.advanceTimersByTimeAsync(3000);
       await coordWithoutLoadAll.stopAutoLoopForProject('/test/project', null);
 
-      // The feature whose dependency is satisfied via the pending-features fallback must be executed
+      // pendingFeatureWithDep executes despite its dependency not being completed,
+      // because dependency checks are bypassed when loadAllFeaturesFn is omitted
       expect(mockExecuteFeature).toHaveBeenCalledWith(
         '/test/project',
         'feature-with-dep',
         true,
         true
       );
-      // The completed dependency itself must NOT be executed (filtered by isFeatureFinishedFn)
+      // dep-feature is not executed because it is marked as running
       expect(mockExecuteFeature).not.toHaveBeenCalledWith(
         '/test/project',
         'dep-feature',

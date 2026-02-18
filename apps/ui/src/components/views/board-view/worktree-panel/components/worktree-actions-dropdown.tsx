@@ -449,51 +449,68 @@ export function WorktreeActionsDropdown({
             </DropdownMenuItem>
           </TooltipWrapper>
         )}
-        {/* Stash operations - combined submenu */}
+        {/* Stash operations - combined submenu or simple item */}
         {(onStashChanges || onViewStashes) && (
           <TooltipWrapper showTooltip={!canPerformGitOps} tooltipContent={gitOpsDisabledReason}>
-            <DropdownMenuSub>
-              <div className="flex items-center">
-                {/* Main clickable area - stash changes (primary action) */}
-                <DropdownMenuItem
-                  onClick={() => {
-                    if (!canPerformGitOps) return;
-                    if (worktree.hasChanges && onStashChanges) {
+            {onViewStashes && worktree.hasChanges && onStashChanges ? (
+              // Both "Stash Changes" (primary) and "View Stashes" (secondary) are available - show split submenu
+              <DropdownMenuSub>
+                <div className="flex items-center">
+                  {/* Main clickable area - stash changes (primary action) */}
+                  <DropdownMenuItem
+                    onClick={() => {
+                      if (!canPerformGitOps) return;
                       onStashChanges(worktree);
-                    } else if (onViewStashes) {
-                      onViewStashes(worktree);
-                    }
-                  }}
-                  disabled={!canPerformGitOps}
-                  className={cn(
-                    'text-xs flex-1 pr-0 rounded-r-none',
-                    !canPerformGitOps && 'opacity-50 cursor-not-allowed'
-                  )}
-                >
-                  <Archive className="w-3.5 h-3.5 mr-2" />
-                  {worktree.hasChanges && onStashChanges ? 'Stash Changes' : 'Stashes'}
-                  {!canPerformGitOps && (
-                    <AlertCircle className="w-3 h-3 ml-auto text-muted-foreground" />
-                  )}
-                </DropdownMenuItem>
-                {/* Chevron trigger for submenu with stash options */}
-                <DropdownMenuSubTrigger
-                  className={cn(
-                    'text-xs px-1 rounded-l-none border-l border-border/30 h-8',
-                    !canPerformGitOps && 'opacity-50 cursor-not-allowed'
-                  )}
-                  disabled={!canPerformGitOps}
-                />
-              </div>
-              <DropdownMenuSubContent>
-                {onViewStashes && (
+                    }}
+                    disabled={!canPerformGitOps}
+                    className={cn(
+                      'text-xs flex-1 pr-0 rounded-r-none',
+                      !canPerformGitOps && 'opacity-50 cursor-not-allowed'
+                    )}
+                  >
+                    <Archive className="w-3.5 h-3.5 mr-2" />
+                    Stash Changes
+                    {!canPerformGitOps && (
+                      <AlertCircle className="w-3 h-3 ml-auto text-muted-foreground" />
+                    )}
+                  </DropdownMenuItem>
+                  {/* Chevron trigger for submenu with stash options */}
+                  <DropdownMenuSubTrigger
+                    className={cn(
+                      'text-xs px-1 rounded-l-none border-l border-border/30 h-8',
+                      !canPerformGitOps && 'opacity-50 cursor-not-allowed'
+                    )}
+                    disabled={!canPerformGitOps}
+                  />
+                </div>
+                <DropdownMenuSubContent>
                   <DropdownMenuItem onClick={() => onViewStashes(worktree)} className="text-xs">
                     <Eye className="w-3.5 h-3.5 mr-2" />
                     View Stashes
                   </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            ) : (
+              // Only one action is meaningful - render a simple menu item without submenu
+              <DropdownMenuItem
+                onClick={() => {
+                  if (!canPerformGitOps) return;
+                  if (worktree.hasChanges && onStashChanges) {
+                    onStashChanges(worktree);
+                  } else if (onViewStashes) {
+                    onViewStashes(worktree);
+                  }
+                }}
+                disabled={!canPerformGitOps}
+                className={cn('text-xs', !canPerformGitOps && 'opacity-50 cursor-not-allowed')}
+              >
+                <Archive className="w-3.5 h-3.5 mr-2" />
+                {worktree.hasChanges && onStashChanges ? 'Stash Changes' : 'Stashes'}
+                {!canPerformGitOps && (
+                  <AlertCircle className="w-3 h-3 ml-auto text-muted-foreground" />
                 )}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+              </DropdownMenuItem>
+            )}
           </TooltipWrapper>
         )}
         <DropdownMenuSeparator />

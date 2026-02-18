@@ -18,6 +18,7 @@ export interface MergeServiceResult {
   success: boolean;
   error?: string;
   hasConflicts?: boolean;
+  conflictFiles?: string[];
   mergedBranch?: string;
   targetBranch?: string;
   deleted?: {
@@ -39,8 +40,12 @@ async function execGitCommand(args: string[], cwd: string): Promise<string> {
   if (result.exitCode === 0) {
     return result.stdout;
   } else {
-    const errorMessage = result.stderr || `Git command failed with code ${result.exitCode}`;
-    throw new Error(errorMessage);
+    const errorMessage =
+      result.stderr || result.stdout || `Git command failed with code ${result.exitCode}`;
+    throw Object.assign(new Error(errorMessage), {
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
   }
 }
 
@@ -125,10 +130,26 @@ export async function performMerge(
     const hasConflicts = output.includes('CONFLICT') || output.includes('Automatic merge failed');
 
     if (hasConflicts) {
+      // Get list of conflicted files
+      let conflictFiles: string[] = [];
+      try {
+        const diffOutput = await execGitCommand(
+          ['diff', '--name-only', '--diff-filter=U'],
+          projectPath
+        );
+        conflictFiles = diffOutput
+          .trim()
+          .split('\n')
+          .filter((f) => f.trim().length > 0);
+      } catch {
+        // If we can't get the file list, that's okay - continue without it
+      }
+
       return {
         success: false,
         error: `Merge CONFLICT: Automatic merge of "${branchName}" into "${mergeTo}" failed. Please resolve conflicts manually.`,
         hasConflicts: true,
+        conflictFiles,
       };
     }
 
