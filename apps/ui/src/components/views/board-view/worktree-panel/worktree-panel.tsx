@@ -613,9 +613,9 @@ export function WorktreePanel({
   const handleConfirmSelectRemote = useCallback(
     async (worktree: WorktreeInfo, remote: string) => {
       if (selectRemoteOperation === 'pull') {
-        handlePull(worktree, remote);
+        await handlePull(worktree, remote);
       } else {
-        handlePush(worktree, remote);
+        await handlePush(worktree, remote);
       }
       fetchBranches(worktree.path);
       fetchWorktrees();
