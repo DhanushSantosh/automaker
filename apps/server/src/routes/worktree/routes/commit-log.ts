@@ -48,7 +48,16 @@ export function createCommitLogHandler() {
       const commitBlocks = logOutput.split('---END---').filter((block) => block.trim());
 
       for (const block of commitBlocks) {
-        const lines = block.split('\n');
+        const allLines = block.split('\n');
+        // Skip leading empty lines that result from the split.
+        // After splitting on ---END---, subsequent blocks start with a newline,
+        // which creates an empty first element that shifts all field indices
+        // (hash becomes empty, shortHash becomes hash, etc.).
+        let startIndex = 0;
+        while (startIndex < allLines.length && allLines[startIndex].trim() === '') {
+          startIndex++;
+        }
+        const lines = allLines.slice(startIndex);
         if (lines.length >= 6) {
           const hash = lines[0].trim();
 

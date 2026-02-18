@@ -83,6 +83,7 @@ function StashEntryItem({
 }) {
   const [expanded, setExpanded] = useState(false);
   const isBusy = isApplying || isDropping;
+  const hasFiles = stash.files && stash.files.length > 0;
 
   // Clean up the stash message for display
   const displayMessage =
@@ -97,30 +98,17 @@ function StashEntryItem({
     >
       {/* Header */}
       <div className="flex items-start gap-3 p-3">
-        {/* Expand toggle & stash icon */}
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1 pt-0.5 text-muted-foreground hover:text-foreground transition-colors"
-          disabled={stash.files.length === 0}
-        >
-          {stash.files.length > 0 ? (
-            expanded ? (
-              <ChevronDown className="w-3.5 h-3.5" />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5" />
-            )
-          ) : (
-            <span className="w-3.5" />
-          )}
+        {/* Stash icon (static) */}
+        <div className="flex items-center pt-0.5 text-muted-foreground">
           <Archive className="w-3.5 h-3.5" />
-        </button>
+        </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p className="text-sm font-medium leading-snug break-words">{displayMessage}</p>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1 font-mono bg-muted px-1.5 py-0.5 rounded text-[10px]">
                   stash@{'{' + stash.index + '}'}
                 </span>
@@ -143,11 +131,21 @@ function StashEntryItem({
                     {formatRelativeDate(stash.date)}
                   </time>
                 </span>
-                {stash.files.length > 0 && (
-                  <span className="inline-flex items-center gap-1">
+                {hasFiles && (
+                  <button
+                    onClick={() => setExpanded(!expanded)}
+                    className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer"
+                    aria-expanded={expanded}
+                    aria-label={`${expanded ? 'Collapse' : 'Expand'} file list, ${stash.files.length} file${stash.files.length !== 1 ? 's' : ''}`}
+                  >
+                    {expanded ? (
+                      <ChevronDown className="w-3 h-3" />
+                    ) : (
+                      <ChevronRight className="w-3 h-3" />
+                    )}
                     <FileText className="w-3 h-3" />
                     {stash.files.length} file{stash.files.length !== 1 ? 's' : ''}
-                  </span>
+                  </button>
                 )}
               </div>
             </div>
@@ -191,7 +189,7 @@ function StashEntryItem({
       </div>
 
       {/* Expanded file list */}
-      {expanded && stash.files.length > 0 && (
+      {expanded && hasFiles && (
         <div className="border-t px-3 py-2 bg-muted/30">
           <div className="space-y-0.5">
             {stash.files.map((file) => (

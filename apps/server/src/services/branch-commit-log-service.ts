@@ -69,10 +69,19 @@ export async function getBranchCommitLog(
   // Parse the output into structured commit objects
   const commits: BranchCommit[] = [];
 
-  const commitBlocks = logOutput.split('---END---\n').filter((block) => block.trim());
+  const commitBlocks = logOutput.split('---END---').filter((block) => block.trim());
 
   for (const block of commitBlocks) {
-    const lines = block.split('\n');
+    const allLines = block.split('\n');
+    // Skip leading empty lines that result from the split.
+    // After splitting on ---END---, subsequent blocks start with a newline,
+    // which creates an empty first element that shifts all field indices
+    // (hash becomes empty, shortHash becomes hash, etc.).
+    let startIndex = 0;
+    while (startIndex < allLines.length && allLines[startIndex].trim() === '') {
+      startIndex++;
+    }
+    const lines = allLines.slice(startIndex);
     if (lines.length >= 6) {
       const hash = lines[0].trim();
 
@@ -80,13 +89,22 @@ export async function getBranchCommitLog(
       let files: string[] = [];
       try {
         const filesOutput = await execGitCommand(
-          ['diff-tree', '--no-commit-id', '--name-only', '-r', hash],
+          // -m causes merge commits to be diffed against each parent,
+          // showing all files touched by the merge (without -m, diff-tree
+          // produces no output for merge commits because they have 2+ parents)
+          ['diff-tree', '--no-commit-id', '--name-only', '-r', '-m', hash],
           worktreePath
         );
-        files = filesOutput
-          .trim()
-          .split('\n')
-          .filter((f) => f.trim());
+        // Deduplicate: -m can list the same file multiple times
+        // (once per parent diff for merge commits)
+        files = [
+          ...new Set(
+            filesOutput
+              .trim()
+              .split('\n')
+              .filter((f) => f.trim())
+          ),
+        ];
       } catch {
         // Ignore errors getting file list
       }
