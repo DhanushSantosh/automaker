@@ -226,6 +226,13 @@ export function CommitWorktreeDialog({
                   setSelectedFiles(new Set(fileList.map((f) => f.path)));
                 }
               }
+            } else {
+              const errorMsg = result.error ?? 'Failed to load diffs';
+              console.warn('Failed to load diffs for commit dialog:', errorMsg);
+              if (!cancelled) {
+                setError(errorMsg);
+                toast.error(errorMsg);
+              }
             }
           }
         } catch (err) {
@@ -480,7 +487,7 @@ export function CommitWorktreeDialog({
                           >
                             {getStatusLabel(file.status)}
                           </span>
-                          {isStaged && !isUntracked && (
+                          {isStaged && !isUnstaged && !isUntracked && (
                             <span className="text-[10px] px-1 py-0.5 rounded border font-medium flex-shrink-0 bg-green-500/15 text-green-400 border-green-500/30">
                               Staged
                             </span>

@@ -212,7 +212,6 @@ async function resolveCodexExecutionPlan(options: ExecuteOptions): Promise<Codex
   // authIndicators.hasApiKey = API key stored in Codex's own auth file (via `codex login --api-key`)
   // Both are "CLI-native" auth — distinct from an API key stored in Automaker's credentials.
   const hasCliNativeAuth = authIndicators.hasOAuthToken || authIndicators.hasApiKey;
-  const cliAuthenticated = hasCliNativeAuth || hasApiKey;
   const sdkEligible = isSdkEligible(options);
 
   // If CLI is available and the user authenticated via the CLI (`codex login`),
@@ -767,7 +766,7 @@ export class CodexProvider extends BaseProvider {
         codexSettings.enableWebSearch || resolveSearchEnabled(resolvedAllowedTools, restrictTools);
       await writeOutputSchemaFile(options.cwd, options.outputFormat);
       const imageBlocks = codexSettings.enableImages ? extractImageBlocks(options.prompt) : [];
-      await writeImageFiles(options.cwd, imageBlocks);
+      const imagePaths = await writeImageFiles(options.cwd, imageBlocks);
       const approvalPolicy =
         hasMcpServers && options.mcpAutoApproveTools !== undefined
           ? options.mcpAutoApproveTools
@@ -808,6 +807,12 @@ export class CodexProvider extends BaseProvider {
         for (const dir of codexSettings.additionalDirs) {
           preExecArgs.push(CODEX_ADD_DIR_FLAG, dir);
         }
+      }
+
+      // If images were written to disk, add the image directory so the CLI can access them
+      if (imagePaths.length > 0) {
+        const imageDir = path.join(options.cwd, CODEX_INSTRUCTIONS_DIR, IMAGE_TEMP_DIR);
+        preExecArgs.push(CODEX_ADD_DIR_FLAG, imageDir);
       }
 
       // Model is already bare (no prefix) - validated by executeQuery

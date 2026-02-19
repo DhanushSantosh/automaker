@@ -14,10 +14,9 @@
  * merge-service.ts.
  */
 
-import { createLogger } from '@automaker/utils';
+import { createLogger, getErrorMessage } from '@automaker/utils';
 import type { EventEmitter } from '../lib/events.js';
 import { execGitCommand, execGitCommandWithLockRetry } from '../lib/git.js';
-import { getErrorMessage, logError } from '../routes/worktree/common.js';
 
 const logger = createLogger('StashService');
 
@@ -242,7 +241,7 @@ export async function applyOrPop(
   } catch (error) {
     const errorMessage = getErrorMessage(error);
 
-    logError(error, `Stash ${operation} failed`);
+    logger.error(`Stash ${operation} failed`, { error: getErrorMessage(error) });
 
     events?.emit('stash:failure', {
       worktreePath,

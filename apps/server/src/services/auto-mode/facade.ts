@@ -16,6 +16,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import type { Feature, PlanningMode, ThinkingLevel } from '@automaker/types';
 import { DEFAULT_MAX_CONCURRENCY, stripProviderPrefix } from '@automaker/types';
+import { resolveModelString } from '@automaker/model-resolver';
 import { createLogger, loadContextFiles, classifyError } from '@automaker/utils';
 import { getFeatureDir } from '@automaker/platform';
 import * as secureFs from '../../lib/secure-fs.js';
@@ -208,7 +209,7 @@ export class AutoModeServiceFacade {
         model?: string,
         opts?: Record<string, unknown>
       ) => {
-        const resolvedModel = model || 'claude-sonnet-4-6';
+        const resolvedModel = resolveModelString(model, 'claude-sonnet-4-6');
         const provider = ProviderFactory.getProviderForModel(resolvedModel);
         const effectiveBareModel = stripProviderPrefix(resolvedModel);
 
@@ -336,7 +337,7 @@ export class AutoModeServiceFacade {
           branchName?: string | null;
         }
       ) => {
-        const resolvedModel = model || 'claude-sonnet-4-6';
+        const resolvedModel = resolveModelString(model, 'claude-sonnet-4-6');
         const provider = ProviderFactory.getProviderForModel(resolvedModel);
         const effectiveBareModel = stripProviderPrefix(resolvedModel);
 

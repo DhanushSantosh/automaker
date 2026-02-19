@@ -350,7 +350,7 @@ export class ClaudeProvider extends BaseProvider {
         provider: 'anthropic',
         description: 'Balanced performance and cost with enhanced reasoning',
         contextWindow: 200000,
-        maxOutputTokens: 128000,
+        maxOutputTokens: 64000,
         supportsVision: true,
         supportsTools: true,
         tier: 'standard' as const,

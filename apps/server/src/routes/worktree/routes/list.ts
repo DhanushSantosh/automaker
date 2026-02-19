@@ -58,9 +58,9 @@ interface WorktreeInfo {
   hasChanges?: boolean;
   changedFilesCount?: number;
   pr?: WorktreePRInfo; // PR info if a PR has been created for this branch
-  /** Whether a merge or rebase is in progress (has conflicts) */
+  /** Whether there are actual unresolved conflict files (conflictFiles.length > 0) */
   hasConflicts?: boolean;
-  /** Type of conflict operation in progress */
+  /** Type of git operation in progress (merge/rebase/cherry-pick), set independently of hasConflicts */
   conflictType?: 'merge' | 'rebase' | 'cherry-pick';
   /** List of files with conflicts */
   conflictFiles?: string[];
@@ -80,6 +80,7 @@ async function detectConflictState(worktreePath: string): Promise<{
     // Find the canonical .git directory for this worktree
     const { stdout: gitDirRaw } = await execAsync('git rev-parse --git-dir', {
       cwd: worktreePath,
+      timeout: 15000,
     });
     const gitDir = path.resolve(worktreePath, gitDirRaw.trim());
 
@@ -122,6 +123,7 @@ async function detectConflictState(worktreePath: string): Promise<{
     try {
       const { stdout: statusOutput } = await execAsync('git diff --name-only --diff-filter=U', {
         cwd: worktreePath,
+        timeout: 15000,
       });
       conflictFiles = statusOutput
         .trim()
@@ -132,7 +134,7 @@ async function detectConflictState(worktreePath: string): Promise<{
     }
 
     return {
-      hasConflicts: true,
+      hasConflicts: conflictFiles.length > 0,
       conflictType,
       conflictFiles,
     };
@@ -476,11 +478,14 @@ export function createListHandler() {
           // Detect merge/rebase/cherry-pick in progress
           try {
             const conflictState = await detectConflictState(worktree.path);
-            if (conflictState.hasConflicts) {
-              worktree.hasConflicts = true;
+            // Always propagate conflictType so callers know an operation is in progress,
+            // even when there are no unresolved conflict files yet.
+            if (conflictState.conflictType) {
               worktree.conflictType = conflictState.conflictType;
-              worktree.conflictFiles = conflictState.conflictFiles;
             }
+            // hasConflicts is true only when there are actual unresolved files
+            worktree.hasConflicts = conflictState.hasConflicts;
+            worktree.conflictFiles = conflictState.conflictFiles;
           } catch {
             // Ignore conflict detection errors
           }

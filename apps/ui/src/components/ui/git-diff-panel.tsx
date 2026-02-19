@@ -528,6 +528,12 @@ export function GitDiffPanel({
   const handleStageFile = useCallback(
     async (filePath: string) => {
       if (!worktreePath && !projectPath) return;
+      if (enableStaging && useWorktrees && !worktreePath) {
+        toast.error('Failed to stage file', {
+          description: 'worktreePath required when useWorktrees is enabled',
+        });
+        return;
+      }
       setStagingInProgress((prev) => new Set(prev).add(filePath));
       try {
         const api = getElectronAPI();
@@ -574,13 +580,19 @@ export function GitDiffPanel({
         });
       }
     },
-    [worktreePath, projectPath, useWorktrees, loadDiffs]
+    [worktreePath, projectPath, useWorktrees, enableStaging, loadDiffs]
   );
 
   // Unstage a single file
   const handleUnstageFile = useCallback(
     async (filePath: string) => {
       if (!worktreePath && !projectPath) return;
+      if (enableStaging && useWorktrees && !worktreePath) {
+        toast.error('Failed to unstage file', {
+          description: 'worktreePath required when useWorktrees is enabled',
+        });
+        return;
+      }
       setStagingInProgress((prev) => new Set(prev).add(filePath));
       try {
         const api = getElectronAPI();
@@ -627,7 +639,7 @@ export function GitDiffPanel({
         });
       }
     },
-    [worktreePath, projectPath, useWorktrees, loadDiffs]
+    [worktreePath, projectPath, useWorktrees, enableStaging, loadDiffs]
   );
 
   const handleStageAll = useCallback(async () => {

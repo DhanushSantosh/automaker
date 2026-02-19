@@ -13,7 +13,11 @@ export function createGitRoutes(): Router {
 
   router.post('/diffs', validatePathParams('projectPath'), createDiffsHandler());
   router.post('/file-diff', validatePathParams('projectPath', 'filePath'), createFileDiffHandler());
-  router.post('/stage-files', validatePathParams('projectPath'), createStageFilesHandler());
+  router.post(
+    '/stage-files',
+    validatePathParams('projectPath', 'files[]'),
+    createStageFilesHandler()
+  );
 
   return router;
 }

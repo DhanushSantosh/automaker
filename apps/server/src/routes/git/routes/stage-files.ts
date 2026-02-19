@@ -2,6 +2,7 @@
  * POST /stage-files endpoint - Stage or unstage files in the main project
  */
 
+import path from 'path';
 import type { Request, Response } from 'express';
 import { getErrorMessage, logError } from '../common.js';
 import { execGitCommand } from '../../../lib/git.js';
@@ -39,17 +40,49 @@ export function createStageFilesHandler() {
         return;
       }
 
+      // Validate and sanitize each file path to prevent path traversal attacks
+      const base = path.resolve(projectPath) + path.sep;
+      const sanitizedFiles: string[] = [];
+      for (const file of files) {
+        // Reject absolute paths
+        if (path.isAbsolute(file)) {
+          res.status(400).json({
+            success: false,
+            error: `Invalid file path (absolute paths not allowed): ${file}`,
+          });
+          return;
+        }
+        // Reject entries containing '..'
+        if (file.includes('..')) {
+          res.status(400).json({
+            success: false,
+            error: `Invalid file path (path traversal not allowed): ${file}`,
+          });
+          return;
+        }
+        // Ensure the resolved path stays within the project directory
+        const resolved = path.resolve(path.join(projectPath, file));
+        if (resolved !== path.resolve(projectPath) && !resolved.startsWith(base)) {
+          res.status(400).json({
+            success: false,
+            error: `Invalid file path (outside project directory): ${file}`,
+          });
+          return;
+        }
+        sanitizedFiles.push(file);
+      }
+
       if (operation === 'stage') {
-        await execGitCommand(['add', '--', ...files], projectPath);
+        await execGitCommand(['add', '--', ...sanitizedFiles], projectPath);
       } else {
-        await execGitCommand(['reset', 'HEAD', '--', ...files], projectPath);
+        await execGitCommand(['reset', 'HEAD', '--', ...sanitizedFiles], projectPath);
       }
 
       res.json({
         success: true,
         result: {
           operation,
-          filesCount: files.length,
+          filesCount: sanitizedFiles.length,
         },
       });
     } catch (error) {

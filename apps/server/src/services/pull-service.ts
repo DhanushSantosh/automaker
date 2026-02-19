@@ -15,9 +15,8 @@
  * and cherry-pick-service.ts.
  */
 
-import { createLogger } from '@automaker/utils';
+import { createLogger, getErrorMessage } from '@automaker/utils';
 import { execGitCommand, execGitCommandWithLockRetry } from '../lib/git.js';
-import { getErrorMessage } from '../routes/worktree/common.js';
 
 const logger = createLogger('PullService');
 

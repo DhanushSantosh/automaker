@@ -144,11 +144,11 @@ async function fetchRemotes(cwd: string): Promise<void> {
  * Parse a remote branch name like "origin/feature-branch" into its parts
  */
 function parseRemoteBranch(branchName: string): { remote: string; branch: string } | null {
-  const slashIndex = branchName.indexOf('/');
-  if (slashIndex === -1) return null;
+  const lastSlash = branchName.lastIndexOf('/');
+  if (lastSlash === -1) return null;
   return {
-    remote: branchName.substring(0, slashIndex),
-    branch: branchName.substring(slashIndex + 1),
+    remote: branchName.substring(0, lastSlash),
+    branch: branchName.substring(lastSlash + 1),
   };
 }
 

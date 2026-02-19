@@ -214,6 +214,8 @@ export function DiscardWorktreeChangesDialog({
             } else {
               if (!cancelled) setError(result.error || 'Failed to fetch diffs');
             }
+          } else {
+            if (!cancelled) setError('Diff API unavailable');
           }
         } catch (err) {
           if (cancelled) return;

@@ -160,7 +160,18 @@ export async function performMerge(
   // If squash merge, need to commit (using safe array-based command)
   if (options?.squash) {
     const squashMessage = options?.message || `Merge ${branchName} (squash)`;
-    await execGitCommand(['commit', '-m', squashMessage], projectPath);
+    try {
+      await execGitCommand(['commit', '-m', squashMessage], projectPath);
+    } catch (commitError: unknown) {
+      const err = commitError as { message?: string };
+      // Emit merge:error so subscribers always receive either merge:success or merge:error
+      emitter?.emit('merge:error', {
+        branchName,
+        targetBranch: mergeTo,
+        error: err.message || String(commitError),
+      });
+      throw commitError;
+    }
   }
 
   // Optionally delete the worktree and branch after merging

@@ -298,7 +298,7 @@ export function createWorktreeRoutes(
   // Stage/unstage files route
   router.post(
     '/stage-files',
-    validatePathParams('worktreePath'),
+    validatePathParams('worktreePath', 'files[]'),
     requireGitRepoOnly,
     createStageFilesHandler()
   );

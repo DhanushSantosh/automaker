@@ -464,7 +464,7 @@ export class OpencodeProvider extends CliProvider {
     // Without this guard, errors like "ProviderModelNotFoundError" or
     // "Resource not found: /path/to/config.json" would false-positive.
     if (cleaned.includes('notfounderror') || cleaned.includes('resource not found')) {
-      return cleaned.includes('/session/') || cleaned.includes('session');
+      return cleaned.includes('/session/') || /\bsession\b/.test(cleaned);
     }
 
     return false;
@@ -720,11 +720,29 @@ export class OpencodeProvider extends CliProvider {
           return null;
         }
 
-        // Final completion (reason: 'stop' or 'end_turn')
+        // Only treat an explicit allowlist of reasons as true success.
+        // Reasons like 'length' (context-window truncation) or 'content-filter'
+        // indicate the model stopped abnormally and must not be surfaced as
+        // successful completions.
+        const SUCCESS_REASONS = new Set(['stop', 'end_turn']);
+        const reason = finishEvent.part?.reason;
+
+        if (reason === undefined || SUCCESS_REASONS.has(reason)) {
+          // Final completion (reason: 'stop', 'end_turn', or unset)
+          return {
+            type: 'result',
+            subtype: 'success',
+            session_id: finishEvent.sessionID,
+            result: (finishEvent.part as OpenCodePart & { result?: string })?.result,
+          };
+        }
+
+        // Non-success, non-tool-calls reason (e.g. 'length', 'content-filter')
         return {
           type: 'result',
-          subtype: 'success',
+          subtype: 'error',
           session_id: finishEvent.sessionID,
+          error: `Step finished with non-success reason: ${reason}`,
           result: (finishEvent.part as OpenCodePart & { result?: string })?.result,
         };
       }
