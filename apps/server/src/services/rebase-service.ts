@@ -149,16 +149,43 @@ export async function runRebase(worktreePath: string, ontoBranch: string): Promi
     const hasConflicts = textIndicatesConflict || rebaseStateExists || hasUnmergedPaths;
 
     if (hasConflicts) {
-      // Get list of conflicted files
-      const conflictFiles = await getConflictFiles(worktreePath);
+      // Attempt to fetch the list of conflicted files.  We wrap this in its
+      // own try/catch so that a failure here does NOT prevent abortRebase from
+      // running – keeping the repository in a clean state is the priority.
+      let conflictFiles: string[] | undefined;
+      let conflictFilesError: unknown;
+      try {
+        conflictFiles = await getConflictFiles(worktreePath);
+      } catch (getConflictFilesError: unknown) {
+        conflictFilesError = getConflictFilesError;
+        logger.warn('Failed to retrieve conflict files after rebase conflict', {
+          worktreePath,
+          error: getErrorMessage(getConflictFilesError),
+        });
+      }
 
-      // Abort the rebase to leave the repo in a clean state
+      // Abort the rebase to leave the repo in a clean state.  This must
+      // always run regardless of whether getConflictFiles succeeded.
       const aborted = await abortRebase(worktreePath);
 
       if (!aborted) {
         logger.error('Failed to abort rebase after conflict; repository may be in a dirty state', {
           worktreePath,
         });
+      }
+
+      // Re-throw a composed error so callers retain both the original rebase
+      // failure context and any conflict-file lookup failure.
+      if (conflictFilesError !== undefined) {
+        const composedMessage = [
+          `Rebase of "${currentBranch}" onto "${normalizedOntoBranch}" failed due to conflicts.`,
+          `Original rebase error: ${getErrorMessage(rebaseError)}`,
+          `Additionally, fetching conflict files failed: ${getErrorMessage(conflictFilesError)}`,
+          aborted
+            ? 'The rebase was aborted; no changes were applied.'
+            : 'The rebase abort also failed; repository may be in a dirty state.',
+        ].join(' ');
+        throw new Error(composedMessage);
       }
 
       return {

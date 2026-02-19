@@ -23,6 +23,13 @@ export interface HasAnyChangesOptions {
    * considered as real working-tree changes (e.g. worktree-branch-service).
    */
   excludeWorktreePaths?: boolean;
+  /**
+   * When true (default), untracked files (lines starting with "??") are
+   * included in the change count. When false, untracked files are ignored so
+   * that hasAnyChanges() is consistent with stashChanges() called without
+   * --include-untracked.
+   */
+  includeUntracked?: boolean;
 }
 
 // ============================================================================
@@ -43,15 +50,20 @@ function isExcludedWorktreeLine(line: string): boolean {
 // ============================================================================
 
 /**
- * Check if there are any changes (including untracked) that should be stashed.
+ * Check if there are any changes that should be stashed.
  *
  * @param cwd - Working directory of the git repository / worktree
  * @param options - Optional flags controlling which lines are counted
  * @param options.excludeWorktreePaths - When true, lines matching worktree
  *   internal paths are excluded so they are not mistaken for real changes
+ * @param options.includeUntracked - When false, untracked files (lines
+ *   starting with "??") are excluded so this is consistent with a
+ *   stashChanges() call that does not pass --include-untracked.
+ *   Defaults to true.
  */
 export async function hasAnyChanges(cwd: string, options?: HasAnyChangesOptions): Promise<boolean> {
   try {
+    const includeUntracked = options?.includeUntracked ?? true;
     const stdout = await execGitCommand(['status', '--porcelain'], cwd);
     const lines = stdout
       .trim()
@@ -59,6 +71,7 @@ export async function hasAnyChanges(cwd: string, options?: HasAnyChangesOptions)
       .filter((line) => {
         if (!line.trim()) return false;
         if (options?.excludeWorktreePaths && isExcludedWorktreeLine(line)) return false;
+        if (!includeUntracked && line.startsWith('??')) return false;
         return true;
       });
     return lines.length > 0;

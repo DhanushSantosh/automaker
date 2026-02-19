@@ -133,7 +133,7 @@ export async function performCheckoutBranch(
   let didStash = false;
 
   if (shouldStash) {
-    const hadChanges = await hasAnyChanges(worktreePath);
+    const hadChanges = await hasAnyChanges(worktreePath, { includeUntracked });
     if (hadChanges) {
       events?.emit('switch:stash', {
         worktreePath,
@@ -187,14 +187,31 @@ export async function performCheckoutBranch(
         action: 'pop',
       });
 
-      const popResult = await popStash(worktreePath);
-      hasConflicts = popResult.hasConflicts;
-      if (popResult.hasConflicts) {
-        conflictMessage = `Created branch '${branchName}' but merge conflicts occurred when reapplying your local changes. Please resolve the conflicts.`;
-      } else if (!popResult.success) {
-        conflictMessage = `Created branch '${branchName}' but failed to reapply stashed changes: ${popResult.error}. Your changes are still in the stash.`;
-      } else {
-        stashReapplied = true;
+      // Isolate the pop in its own try/catch so a thrown exception does not
+      // propagate to the outer catch block, which would attempt a second pop.
+      try {
+        const popResult = await popStash(worktreePath);
+        // Mark didStash false so the outer error-recovery path cannot pop again.
+        didStash = false;
+        hasConflicts = popResult.hasConflicts;
+        if (popResult.hasConflicts) {
+          conflictMessage = `Created branch '${branchName}' but merge conflicts occurred when reapplying your local changes. Please resolve the conflicts.`;
+        } else if (!popResult.success) {
+          conflictMessage = `Created branch '${branchName}' but failed to reapply stashed changes: ${popResult.error}. Your changes are still in the stash.`;
+        } else {
+          stashReapplied = true;
+        }
+      } catch (popError) {
+        // Pop threw an unexpected exception. Record the error and clear didStash
+        // so the outer catch does not attempt a second pop.
+        didStash = false;
+        conflictMessage = `Created branch '${branchName}' but an error occurred while reapplying stashed changes: ${getErrorMessage(popError)}. Your changes may still be in the stash.`;
+        events?.emit('switch:pop', {
+          worktreePath,
+          targetBranch: branchName,
+          action: 'pop',
+          error: getErrorMessage(popError),
+        });
       }
     }
 
@@ -255,28 +272,49 @@ export async function performCheckoutBranch(
   } catch (checkoutError) {
     // 7. If checkout failed and we stashed, try to restore the stash
     if (didStash) {
-      const popResult = await popStash(worktreePath);
-      if (popResult.hasConflicts) {
+      try {
+        const popResult = await popStash(worktreePath);
+        if (popResult.hasConflicts) {
+          const checkoutErrorMsg = getErrorMessage(checkoutError);
+          events?.emit('switch:error', {
+            worktreePath,
+            branchName,
+            error: checkoutErrorMsg,
+            stashPopConflicts: true,
+          });
+          return {
+            success: false,
+            error: checkoutErrorMsg,
+            stashPopConflicts: true,
+            stashPopConflictMessage:
+              'Stash pop resulted in conflicts: your stashed changes were partially reapplied ' +
+              'but produced merge conflicts. Please resolve the conflicts before retrying.',
+          };
+        } else if (!popResult.success) {
+          const checkoutErrorMsg = getErrorMessage(checkoutError);
+          const combinedMessage =
+            `${checkoutErrorMsg}. Additionally, restoring your stashed changes failed: ` +
+            `${popResult.error ?? 'unknown error'} — your changes are still saved in the stash.`;
+          events?.emit('switch:error', {
+            worktreePath,
+            branchName,
+            error: combinedMessage,
+          });
+          return {
+            success: false,
+            error: combinedMessage,
+            stashPopConflicts: false,
+          };
+        }
+        // popResult.success === true: stash was cleanly restored
+      } catch (popError) {
+        // popStash itself threw — build a failure result rather than letting
+        // the exception propagate and produce an unhandled rejection.
         const checkoutErrorMsg = getErrorMessage(checkoutError);
-        events?.emit('switch:error', {
-          worktreePath,
-          branchName,
-          error: checkoutErrorMsg,
-          stashPopConflicts: true,
-        });
-        return {
-          success: false,
-          error: checkoutErrorMsg,
-          stashPopConflicts: true,
-          stashPopConflictMessage:
-            'Stash pop resulted in conflicts: your stashed changes were partially reapplied ' +
-            'but produced merge conflicts. Please resolve the conflicts before retrying.',
-        };
-      } else if (!popResult.success) {
-        const checkoutErrorMsg = getErrorMessage(checkoutError);
+        const popErrorMsg = getErrorMessage(popError);
         const combinedMessage =
-          `${checkoutErrorMsg}. Additionally, restoring your stashed changes failed: ` +
-          `${popResult.error ?? 'unknown error'} — your changes are still saved in the stash.`;
+          `${checkoutErrorMsg}. Additionally, an error occurred while attempting to restore ` +
+          `your stashed changes: ${popErrorMsg} — your changes may still be saved in the stash.`;
         events?.emit('switch:error', {
           worktreePath,
           branchName,
@@ -286,9 +324,9 @@ export async function performCheckoutBranch(
           success: false,
           error: combinedMessage,
           stashPopConflicts: false,
+          stashPopConflictMessage: combinedMessage,
         };
       }
-      // popResult.success === true: stash was cleanly restored
     }
     const checkoutErrorMsg = getErrorMessage(checkoutError);
     events?.emit('switch:error', {
