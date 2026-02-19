@@ -75,6 +75,8 @@ export type EventType =
   | 'merge:success'
   | 'merge:conflict'
   | 'merge:error'
+  | 'conflict:aborted'
+  | 'conflict:resolved'
   | 'branchCommitLog:start'
   | 'branchCommitLog:progress'
   | 'branchCommitLog:done'
