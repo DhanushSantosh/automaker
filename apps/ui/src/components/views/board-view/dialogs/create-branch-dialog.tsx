@@ -112,6 +112,9 @@ export function CreateBranchDialog({
     if (open) {
       setBranchName('');
       setBaseBranch('');
+      // Update the ref synchronously so fetchBranches() sees the cleared value
+      // immediately, rather than the stale value from the previous open.
+      baseBranchRef.current = '';
       setError(null);
       setBranches([]);
       setBaseBranchPopoverOpen(false);

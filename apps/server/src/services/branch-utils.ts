@@ -92,19 +92,21 @@ export async function stashChanges(
     }
     args.push('-m', message);
 
-    await execGitCommandWithLockRetry(args, cwd);
+    const stdout = await execGitCommandWithLockRetry(args, cwd);
+
+    // git exits 0 but prints a benign message when there is nothing to stash
+    const stdoutLower = stdout.toLowerCase();
+    if (
+      stdoutLower.includes('no local changes to save') ||
+      stdoutLower.includes('nothing to stash')
+    ) {
+      logger.debug('stashChanges: nothing to stash', { cwd, message, stdout });
+      return false;
+    }
+
     return true;
   } catch (error) {
     const errorMsg = getErrorMessage(error);
-
-    // "Nothing to stash" is benign – no work was lost, just return false
-    if (
-      errorMsg.toLowerCase().includes('no local changes to save') ||
-      errorMsg.toLowerCase().includes('nothing to stash')
-    ) {
-      logger.debug('stashChanges: nothing to stash', { cwd, message, error: errorMsg });
-      return false;
-    }
 
     // Unexpected error – log full details and re-throw so the caller aborts
     // rather than proceeding with an un-stashed working tree

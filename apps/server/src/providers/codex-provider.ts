@@ -845,11 +845,9 @@ export class CodexProvider extends BaseProvider {
         options.model,
         CODEX_JSON_FLAG,
         ...configOverrideArgs,
+        ...(schemaPath ? [CODEX_OUTPUT_SCHEMA_FLAG, schemaPath] : []),
         '-', // Read prompt from stdin to avoid shell escaping issues
       ];
-      if (schemaPath) {
-        args.push(CODEX_OUTPUT_SCHEMA_FLAG, schemaPath);
-      }
 
       const envOverrides = buildEnv();
       if (executionPlan.openAiApiKey && !envOverrides[OPENAI_API_KEY_ENV]) {
