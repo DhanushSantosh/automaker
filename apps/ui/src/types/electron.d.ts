@@ -1596,6 +1596,26 @@ export interface WorktreeAPI {
     aborted?: boolean;
   }>;
 
+  // Abort an in-progress merge, rebase, or cherry-pick operation
+  abortOperation: (worktreePath: string) => Promise<{
+    success: boolean;
+    result?: {
+      operation: string;
+      message: string;
+    };
+    error?: string;
+  }>;
+
+  // Continue an in-progress merge, rebase, or cherry-pick after conflict resolution
+  continueOperation: (worktreePath: string) => Promise<{
+    success: boolean;
+    result?: {
+      operation: string;
+      message: string;
+    };
+    error?: string;
+  }>;
+
   // Get commit log for a specific branch (not just the current one)
   getBranchCommitLog: (
     worktreePath: string,

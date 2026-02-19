@@ -519,7 +519,8 @@ export class PipelineOrchestrator {
         targetBranch || 'main',
         {
           deleteWorktreeAndBranch: false,
-        }
+        },
+        this.eventBus.getUnderlyingEmitter()
       );
 
       if (!result.success) {

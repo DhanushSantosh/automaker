@@ -19,11 +19,10 @@
  * 7. Handle error recovery (restore stash if checkout fails)
  */
 
-import { createLogger, getErrorMessage } from '@automaker/utils';
-import { execGitCommand, execGitCommandWithLockRetry } from '../lib/git.js';
+import { getErrorMessage } from '@automaker/utils';
+import { execGitCommand } from '../lib/git.js';
 import type { EventEmitter } from '../lib/events.js';
-
-const logger = createLogger('CheckoutBranchService');
+import { hasAnyChanges, stashChanges, popStash, localBranchExists } from './branch-utils.js';
 
 // ============================================================================
 // Types
@@ -50,101 +49,6 @@ export interface CheckoutBranchResult {
   stashPopConflicts?: boolean;
   /** Human-readable message when stash pop conflicts occur during error recovery */
   stashPopConflictMessage?: string;
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Check if there are any changes (including untracked) that should be stashed
- */
-async function hasAnyChanges(cwd: string): Promise<boolean> {
-  try {
-    const stdout = await execGitCommand(['status', '--porcelain'], cwd);
-    const lines = stdout
-      .trim()
-      .split('\n')
-      .filter((line) => line.trim());
-    return lines.length > 0;
-  } catch (err) {
-    logger.error('hasAnyChanges: execGitCommand failed — returning false', {
-      cwd,
-      error: getErrorMessage(err),
-    });
-    return false;
-  }
-}
-
-/**
- * Stash all local changes (including untracked files if requested)
- * Returns true if a stash was created, false if there was nothing to stash.
- * Throws on unexpected errors so callers abort rather than proceeding silently.
- */
-async function stashChanges(
-  cwd: string,
-  message: string,
-  includeUntracked: boolean
-): Promise<boolean> {
-  try {
-    const args = ['stash', 'push'];
-    if (includeUntracked) {
-      args.push('--include-untracked');
-    }
-    args.push('-m', message);
-
-    await execGitCommandWithLockRetry(args, cwd);
-    return true;
-  } catch (error) {
-    const errorMsg = getErrorMessage(error);
-
-    // "Nothing to stash" is benign
-    if (
-      errorMsg.toLowerCase().includes('no local changes to save') ||
-      errorMsg.toLowerCase().includes('nothing to stash')
-    ) {
-      logger.debug('stashChanges: nothing to stash', { cwd, message, error: errorMsg });
-      return false;
-    }
-
-    logger.error('stashChanges: unexpected error during stash', {
-      cwd,
-      message,
-      error: errorMsg,
-    });
-    throw new Error(`Failed to stash changes in ${cwd}: ${errorMsg}`);
-  }
-}
-
-/**
- * Pop the most recent stash entry
- * Returns an object indicating success and whether there were conflicts
- */
-async function popStash(
-  cwd: string
-): Promise<{ success: boolean; hasConflicts: boolean; error?: string }> {
-  try {
-    await execGitCommand(['stash', 'pop'], cwd);
-    return { success: true, hasConflicts: false };
-  } catch (error) {
-    const errorMsg = getErrorMessage(error);
-    if (errorMsg.includes('CONFLICT') || errorMsg.includes('Merge conflict')) {
-      return { success: false, hasConflicts: true, error: errorMsg };
-    }
-    return { success: false, hasConflicts: false, error: errorMsg };
-  }
-}
-
-/**
- * Check if a local branch already exists
- */
-async function localBranchExists(cwd: string, branchName: string): Promise<boolean> {
-  try {
-    await execGitCommand(['rev-parse', '--verify', `refs/heads/${branchName}`], cwd);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 // ============================================================================
@@ -175,11 +79,25 @@ export async function performCheckoutBranch(
   events?.emit('switch:start', { worktreePath, branchName, operation: 'checkout' });
 
   // 1. Get current branch
-  const currentBranchOutput = await execGitCommand(
-    ['rev-parse', '--abbrev-ref', 'HEAD'],
-    worktreePath
-  );
-  const previousBranch = currentBranchOutput.trim();
+  let previousBranch: string;
+  try {
+    const currentBranchOutput = await execGitCommand(
+      ['rev-parse', '--abbrev-ref', 'HEAD'],
+      worktreePath
+    );
+    previousBranch = currentBranchOutput.trim();
+  } catch (branchError) {
+    const branchErrorMsg = getErrorMessage(branchError);
+    events?.emit('switch:error', {
+      worktreePath,
+      branchName,
+      error: branchErrorMsg,
+    });
+    return {
+      success: false,
+      error: `Failed to determine current branch: ${branchErrorMsg}`,
+    };
+  }
 
   // 2. Check if branch already exists
   if (await localBranchExists(worktreePath, branchName)) {

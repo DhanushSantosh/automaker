@@ -80,7 +80,11 @@ export async function getLocalChanges(
       .trim()
       .split('\n')
       .filter((line) => line.trim().length > 0)
-      .map((line) => line.substring(3).trim());
+      .map((line) => {
+        const entry = line.substring(3).trim();
+        const arrowIndex = entry.indexOf(' -> ');
+        return arrowIndex !== -1 ? entry.substring(arrowIndex + 4).trim() : entry;
+      });
   }
 
   return { hasLocalChanges, localChangedFiles };
@@ -321,7 +325,11 @@ export async function performPull(
 
     if (isConflictError(errorOutput)) {
       pullConflict = true;
-      pullConflictFiles = await getConflictFiles(worktreePath);
+      try {
+        pullConflictFiles = await getConflictFiles(worktreePath);
+      } catch {
+        pullConflictFiles = [];
+      }
     } else {
       // Non-conflict pull error
       let stashRecoveryFailed = false;
@@ -407,7 +415,12 @@ async function reapplyStash(worktreePath: string, branchName: string): Promise<P
     // Check if stash pop failed due to conflicts
     // The stash remains in the stash list when conflicts occur, so stashRestored is false
     if (isStashConflict(errorOutput)) {
-      const stashConflictFiles = await getConflictFiles(worktreePath);
+      let stashConflictFiles: string[] = [];
+      try {
+        stashConflictFiles = await getConflictFiles(worktreePath);
+      } catch {
+        stashConflictFiles = [];
+      }
 
       return {
         success: true,

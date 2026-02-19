@@ -137,6 +137,7 @@ describe('PipelineOrchestrator', () => {
 
     mockEventBus = {
       emitAutoModeEvent: vi.fn(),
+      getUnderlyingEmitter: vi.fn().mockReturnValue({}),
     } as unknown as TypedEventBus;
 
     mockFeatureStateManager = {
@@ -492,7 +493,8 @@ describe('PipelineOrchestrator', () => {
         'feature/test-1',
         '/test/worktree',
         'main',
-        { deleteWorktreeAndBranch: false }
+        { deleteWorktreeAndBranch: false },
+        expect.anything()
       );
     });
 
@@ -792,7 +794,8 @@ describe('PipelineOrchestrator', () => {
         'feature/test-1',
         '/test/project', // Falls back to projectPath when worktreePath is null
         'main',
-        { deleteWorktreeAndBranch: false }
+        { deleteWorktreeAndBranch: false },
+        expect.anything()
       );
     });
   });
@@ -845,7 +848,8 @@ describe('PipelineOrchestrator', () => {
           'feature/test-1',
           '/test/custom-worktree',
           'main',
-          { deleteWorktreeAndBranch: false }
+          { deleteWorktreeAndBranch: false },
+          expect.anything()
         );
       });
 
@@ -861,7 +865,8 @@ describe('PipelineOrchestrator', () => {
           'feature/custom-branch',
           '/test/worktree',
           'main',
-          { deleteWorktreeAndBranch: false }
+          { deleteWorktreeAndBranch: false },
+          expect.anything()
         );
       });
 

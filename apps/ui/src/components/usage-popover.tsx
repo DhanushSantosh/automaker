@@ -93,11 +93,12 @@ export function UsagePopover() {
   // Track whether the user has manually selected a tab so we don't override their choice
   const userHasSelected = useRef(false);
 
-  // Check authentication status
+  // Check authentication status — use explicit boolean coercion so hooks never
+  // receive undefined for their `enabled` parameter during auth-loading
   const isClaudeAuthenticated = !!claudeAuthStatus?.authenticated;
-  const isCodexAuthenticated = codexAuthStatus?.authenticated;
-  const isZaiAuthenticated = zaiAuthStatus?.authenticated;
-  const isGeminiAuthenticated = geminiAuthStatus?.authenticated;
+  const isCodexAuthenticated = !!codexAuthStatus?.authenticated;
+  const isZaiAuthenticated = !!zaiAuthStatus?.authenticated;
+  const isGeminiAuthenticated = !!geminiAuthStatus?.authenticated;
 
   // Use React Query hooks for usage data
   // Only enable polling when popover is open AND the tab is active
@@ -239,12 +240,6 @@ export function UsagePopover() {
     return !geminiUsageLastUpdated || Date.now() - geminiUsageLastUpdated > 2 * 60 * 1000;
   }, [geminiUsageLastUpdated]);
 
-  // Refetch functions for manual refresh
-  const fetchClaudeUsage = () => refetchClaude();
-  const fetchCodexUsage = () => refetchCodex();
-  const fetchZaiUsage = () => refetchZai();
-  const fetchGeminiUsage = () => refetchGemini();
-
   // Derived status color/icon helper
   const getStatusInfo = (percentage: number) => {
     if (percentage >= 75) return { color: 'text-red-500', icon: XCircle, bg: 'bg-red-500' };
@@ -368,13 +363,6 @@ export function UsagePopover() {
   // Calculate max percentage for header button
   const claudeSessionPercentage = claudeUsage?.sessionPercentage || 0;
 
-  const _codexMaxPercentage = codexUsage?.rateLimits
-    ? Math.max(
-        codexUsage.rateLimits.primary?.usedPercent || 0,
-        codexUsage.rateLimits.secondary?.usedPercent || 0
-      )
-    : 0;
-
   const zaiMaxPercentage = zaiUsage?.quotaLimits
     ? Math.max(
         zaiUsage.quotaLimits.tokens?.usedPercent || 0,
@@ -383,7 +371,8 @@ export function UsagePopover() {
     : 0;
 
   // Gemini quota from Google Cloud API (if available)
-  const geminiMaxPercentage = geminiUsage?.usedPercent ?? (geminiUsage?.authenticated ? 0 : 100);
+  // Default to 0 when usedPercent is not available to avoid a misleading full-red indicator
+  const geminiMaxPercentage = geminiUsage?.usedPercent ?? 0;
 
   const getProgressBarColor = (percentage: number) => {
     if (percentage >= 80) return 'bg-red-500';
@@ -397,9 +386,6 @@ export function UsagePopover() {
     codexSecondaryWindowMinutes && codexPrimaryWindowMinutes
       ? Math.min(codexPrimaryWindowMinutes, codexSecondaryWindowMinutes)
       : (codexSecondaryWindowMinutes ?? codexPrimaryWindowMinutes);
-  const _codexWindowLabel = codexWindowMinutes
-    ? getCodexWindowLabel(codexWindowMinutes).title
-    : 'Window';
   const codexWindowUsage =
     codexWindowMinutes === codexSecondaryWindowMinutes
       ? codexUsage?.rateLimits?.secondary?.usedPercent
@@ -537,7 +523,7 @@ export function UsagePopover() {
                   variant="ghost"
                   size="icon"
                   className={cn('h-6 w-6', claudeLoading && 'opacity-80')}
-                  onClick={() => !claudeLoading && fetchClaudeUsage()}
+                  onClick={() => !claudeLoading && refetchClaude()}
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                 </Button>
@@ -646,7 +632,7 @@ export function UsagePopover() {
                   variant="ghost"
                   size="icon"
                   className={cn('h-6 w-6', codexLoading && 'opacity-80')}
-                  onClick={() => !codexLoading && fetchCodexUsage()}
+                  onClick={() => !codexLoading && refetchCodex()}
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                 </Button>
@@ -783,7 +769,7 @@ export function UsagePopover() {
                   variant="ghost"
                   size="icon"
                   className={cn('h-6 w-6', zaiLoading && 'opacity-80')}
-                  onClick={() => !zaiLoading && fetchZaiUsage()}
+                  onClick={() => !zaiLoading && refetchZai()}
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                 </Button>
@@ -899,7 +885,7 @@ export function UsagePopover() {
                   variant="ghost"
                   size="icon"
                   className={cn('h-6 w-6', geminiLoading && 'opacity-80')}
-                  onClick={() => !geminiLoading && fetchGeminiUsage()}
+                  onClick={() => !geminiLoading && refetchGemini()}
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                 </Button>

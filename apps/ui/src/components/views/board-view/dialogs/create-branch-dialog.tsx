@@ -32,6 +32,7 @@ import {
   type UncommittedChangesInfo,
   type StashConfirmAction,
 } from './stash-confirm-dialog';
+import { type BranchInfo } from '../worktree-panel/types';
 
 interface WorktreeInfo {
   path: string;
@@ -39,12 +40,6 @@ interface WorktreeInfo {
   isMain: boolean;
   hasChanges?: boolean;
   changedFilesCount?: number;
-}
-
-interface BranchInfo {
-  name: string;
-  isCurrent: boolean;
-  isRemote: boolean;
 }
 
 const logger = createLogger('CreateBranchDialog');
@@ -67,6 +62,7 @@ export function CreateBranchDialog({
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [baseBranchPopoverOpen, setBaseBranchPopoverOpen] = useState(false);
   const baseBranchTriggerRef = useRef<HTMLButtonElement>(null);
@@ -121,6 +117,7 @@ export function CreateBranchDialog({
       setBaseBranchPopoverOpen(false);
       setShowStashConfirm(false);
       setUncommittedChanges(null);
+      setIsChecking(false);
       fetchBranches();
     }
   }, [open, fetchBranches]);
@@ -151,6 +148,7 @@ export function CreateBranchDialog({
         const api = getElectronAPI();
         if (!api?.worktree?.checkoutBranch) {
           toast.error('Branch API not available');
+          setIsCreating(false);
           return;
         }
 
@@ -197,6 +195,8 @@ export function CreateBranchDialog({
    * Checks for uncommitted changes first and shows confirmation if needed.
    */
   const handleCreate = async () => {
+    // Guard against concurrent invocations during the async pre-check or creation
+    if (isCreating || isChecking) return;
     if (!worktree || !branchName.trim()) return;
 
     // Basic validation
@@ -207,6 +207,7 @@ export function CreateBranchDialog({
     }
 
     setError(null);
+    setIsChecking(true);
 
     // Check for uncommitted changes before proceeding
     try {
@@ -221,6 +222,7 @@ export function CreateBranchDialog({
           untracked: changesResult.result.untracked,
           totalFiles: changesResult.result.totalFiles,
         });
+        setIsChecking(false);
         setShowStashConfirm(true);
         return;
       }
@@ -228,6 +230,8 @@ export function CreateBranchDialog({
       // If we can't check for changes, proceed without stashing
       logger.warn('Failed to check for uncommitted changes, proceeding without stash:', err);
     }
+
+    setIsChecking(false);
 
     // No changes detected, proceed directly
     doCreate(false);
@@ -289,11 +293,11 @@ export function CreateBranchDialog({
                   setError(null);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && branchName.trim() && !isCreating) {
+                  if (e.key === 'Enter' && branchName.trim() && !isCreating && !isChecking) {
                     handleCreate();
                   }
                 }}
-                disabled={isCreating}
+                disabled={isCreating || isChecking}
                 autoFocus
               />
             </div>
@@ -417,14 +421,26 @@ export function CreateBranchDialog({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isCreating}>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isCreating || isChecking}
+            >
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={!branchName.trim() || isCreating}>
+            <Button
+              onClick={handleCreate}
+              disabled={!branchName.trim() || isCreating || isChecking}
+            >
               {isCreating ? (
                 <>
                   <Spinner size="sm" className="mr-2" />
                   Creating...
+                </>
+              ) : isChecking ? (
+                <>
+                  <Spinner size="sm" className="mr-2" />
+                  Checking...
                 </>
               ) : (
                 'Create Branch'

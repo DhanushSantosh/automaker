@@ -40,12 +40,12 @@ export interface RebaseResult {
  * @returns RebaseResult with success/failure information
  */
 export async function runRebase(worktreePath: string, ontoBranch: string): Promise<RebaseResult> {
-  // Reject branch names that start with a dash to prevent them from being
-  // misinterpreted as git options.
-  if (ontoBranch.startsWith('-')) {
+  // Reject empty, whitespace-only, or dash-prefixed branch names.
+  const normalizedOntoBranch = ontoBranch?.trim() ?? '';
+  if (normalizedOntoBranch === '' || normalizedOntoBranch.startsWith('-')) {
     return {
       success: false,
-      error: `Invalid branch name: "${ontoBranch}" must not start with a dash.`,
+      error: `Invalid branch name: "${ontoBranch}" must not be empty or start with a dash.`,
     };
   }
 

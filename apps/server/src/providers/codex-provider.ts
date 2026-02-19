@@ -204,6 +204,7 @@ function isSdkEligible(options: ExecuteOptions): boolean {
 function isSdkEligibleWithApiKey(options: ExecuteOptions): boolean {
   // When using an API key (not CLI OAuth), prefer SDK over CLI to avoid OAuth issues.
   // SDK mode is used when MCP servers are not configured (MCP requires CLI).
+  // Tool requests are handled by the SDK, so we allow SDK mode even with tools.
   return !hasMcpServersConfigured(options);
 }
 
@@ -922,7 +923,7 @@ export class CodexProvider extends BaseProvider {
               `Try again, or switch to a different model.`;
           } else if (
             errorLower.includes('command not found') ||
-            (errorLower.includes('not found') && !errorLower.includes('model'))
+            errorLower.includes('is not recognized as an internal or external command')
           ) {
             enhancedError = `${errorText}\n\nTip: Make sure the Codex CLI is installed. Run 'npm install -g @openai/codex-cli' to install.`;
           }

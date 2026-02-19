@@ -6,7 +6,7 @@
 
 import { createLogger, isValidBranchName } from '@automaker/utils';
 import { type EventEmitter } from '../lib/events.js';
-import { execGitCommand } from '../lib/git.js';
+import { execGitCommand } from '@automaker/git-utils';
 const logger = createLogger('MergeService');
 
 export interface MergeOptions {
@@ -157,9 +157,22 @@ export async function performMerge(
       });
       // Unmerged status codes occupy the first two characters of each line.
       // Standard unmerged codes: UU, AA, DD, AU, UA, DU, UD.
-      hasUnmergedPaths = statusOutput
+      const unmergedLines = statusOutput
         .split('\n')
-        .some((line) => /^(UU|AA|DD|AU|UA|DU|UD)/.test(line));
+        .filter((line) => /^(UU|AA|DD|AU|UA|DU|UD)/.test(line));
+      hasUnmergedPaths = unmergedLines.length > 0;
+
+      // If Layer 2 did not populate conflictFiles (e.g. diff failed or returned
+      // nothing) but Layer 3 does detect unmerged paths, parse the status lines
+      // to extract filenames and assign them to conflictFiles so callers always
+      // receive an accurate file list when conflicts are present.
+      if (hasUnmergedPaths && conflictFiles === undefined) {
+        const parsedFiles = unmergedLines
+          .map((line) => line.slice(2).trim())
+          .filter((f) => f.length > 0);
+        // Deduplicate (e.g. rename entries can appear twice)
+        conflictFiles = [...new Set(parsedFiles)];
+      }
     } catch {
       // git status failing is itself a sign something is wrong; leave
       // hasUnmergedPaths as false and rely on the other layers.

@@ -82,6 +82,10 @@ export function createCheckChangesHandler() {
 
       const hasChanges = staged.length > 0 || unstaged.length > 0 || untracked.length > 0;
 
+      // Deduplicate file paths across staged, unstaged, and untracked arrays
+      // to avoid double-counting partially staged files
+      const uniqueFilePaths = new Set([...staged, ...unstaged, ...untracked]);
+
       res.json({
         success: true,
         result: {
@@ -89,7 +93,7 @@ export function createCheckChangesHandler() {
           staged,
           unstaged,
           untracked,
-          totalFiles: staged.length + unstaged.length + untracked.length,
+          totalFiles: uniqueFilePaths.size,
         },
       });
     } catch (error) {

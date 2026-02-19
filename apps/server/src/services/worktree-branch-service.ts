@@ -17,8 +17,9 @@
  */
 
 import { createLogger, getErrorMessage } from '@automaker/utils';
-import { execGitCommand, execGitCommandWithLockRetry } from '../lib/git.js';
+import { execGitCommand } from '../lib/git.js';
 import type { EventEmitter } from '../lib/events.js';
+import { hasAnyChanges, stashChanges, popStash, localBranchExists } from './branch-utils.js';
 
 const logger = createLogger('WorktreeBranchService');
 
@@ -43,91 +44,8 @@ export interface SwitchBranchResult {
 }
 
 // ============================================================================
-// Helper Functions
+// Local Helpers
 // ============================================================================
-
-function isExcludedWorktreeLine(line: string): boolean {
-  return line.includes('.worktrees/') || line.endsWith('.worktrees');
-}
-
-/**
- * Check if there are any changes at all (including untracked) that should be stashed
- */
-async function hasAnyChanges(cwd: string): Promise<boolean> {
-  try {
-    const stdout = await execGitCommand(['status', '--porcelain'], cwd);
-    const lines = stdout
-      .trim()
-      .split('\n')
-      .filter((line) => {
-        if (!line.trim()) return false;
-        if (isExcludedWorktreeLine(line)) return false;
-        return true;
-      });
-    return lines.length > 0;
-  } catch (err) {
-    logger.error('hasAnyChanges: execGitCommand failed — returning false', {
-      cwd,
-      error: getErrorMessage(err),
-    });
-    return false;
-  }
-}
-
-/**
- * Stash all local changes (including untracked files)
- * Returns true if a stash was created, false if there was nothing to stash.
- * Throws on unexpected errors so callers abort rather than proceeding silently.
- */
-async function stashChanges(cwd: string, message: string): Promise<boolean> {
-  try {
-    // Stash including untracked files — a successful execGitCommand is proof
-    // the stash was created. No need for a post-push listing which can throw
-    // and incorrectly report a failed stash.
-    await execGitCommandWithLockRetry(['stash', 'push', '--include-untracked', '-m', message], cwd);
-    return true;
-  } catch (error) {
-    const errorMsg = getErrorMessage(error);
-
-    // "Nothing to stash" is benign – no work was lost, just return false
-    if (
-      errorMsg.toLowerCase().includes('no local changes to save') ||
-      errorMsg.toLowerCase().includes('nothing to stash')
-    ) {
-      logger.debug('stashChanges: nothing to stash', { cwd, message, error: errorMsg });
-      return false;
-    }
-
-    // Unexpected error – log full details and re-throw so the caller aborts
-    // rather than proceeding with an un-stashed working tree
-    logger.error('stashChanges: unexpected error during stash', {
-      cwd,
-      message,
-      error: errorMsg,
-    });
-    throw new Error(`Failed to stash changes in ${cwd}: ${errorMsg}`);
-  }
-}
-
-/**
- * Pop the most recent stash entry
- * Returns an object indicating success and whether there were conflicts
- */
-async function popStash(
-  cwd: string
-): Promise<{ success: boolean; hasConflicts: boolean; error?: string }> {
-  try {
-    await execGitCommand(['stash', 'pop'], cwd);
-    // If execGitCommand succeeds (zero exit code), there are no conflicts
-    return { success: true, hasConflicts: false };
-  } catch (error) {
-    const errorMsg = getErrorMessage(error);
-    if (errorMsg.includes('CONFLICT') || errorMsg.includes('Merge conflict')) {
-      return { success: false, hasConflicts: true, error: errorMsg };
-    }
-    return { success: false, hasConflicts: false, error: errorMsg };
-  }
-}
 
 /** Timeout for git fetch operations (30 seconds) */
 const FETCH_TIMEOUT_MS = 30_000;
@@ -196,18 +114,6 @@ async function isRemoteBranch(cwd: string, branchName: string): Promise<boolean>
       cwd,
       error: getErrorMessage(err),
     });
-    return false;
-  }
-}
-
-/**
- * Check if a local branch already exists
- */
-async function localBranchExists(cwd: string, branchName: string): Promise<boolean> {
-  try {
-    await execGitCommand(['rev-parse', '--verify', `refs/heads/${branchName}`], cwd);
-    return true;
-  } catch {
     return false;
   }
 }
@@ -308,7 +214,7 @@ export async function performSwitchBranch(
   }
 
   // 5. Stash local changes if any exist
-  const hadChanges = await hasAnyChanges(worktreePath);
+  const hadChanges = await hasAnyChanges(worktreePath, { excludeWorktreePaths: true });
   let didStash = false;
 
   if (hadChanges) {
@@ -320,7 +226,7 @@ export async function performSwitchBranch(
     });
     const stashMessage = `automaker-branch-switch: ${previousBranch} → ${targetBranch}`;
     try {
-      didStash = await stashChanges(worktreePath, stashMessage);
+      didStash = await stashChanges(worktreePath, stashMessage, true);
     } catch (stashError) {
       const stashErrorMsg = getErrorMessage(stashError);
       events?.emit('switch:error', {

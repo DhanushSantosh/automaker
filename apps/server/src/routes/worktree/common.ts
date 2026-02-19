@@ -62,13 +62,21 @@ export const execEnv = {
 
 /**
  * Validate git remote name to prevent command injection.
- * Allowed characters: alphanumerics, hyphen, underscore, dot, and slash.
- * Rejects empty strings and names that are too long.
+ * Matches the strict validation used in add-remote.ts:
+ * - Rejects empty strings and names that are too long
+ * - Disallows names that start with '-' or '.'
+ * - Forbids the substring '..'
+ * - Rejects '/' characters
+ * - Rejects NUL bytes
+ * - Must consist only of alphanumerics, hyphens, underscores, and dots
  */
 export function isValidRemoteName(name: string): boolean {
-  return (
-    name.length > 0 && name.length < MAX_BRANCH_NAME_LENGTH && /^[a-zA-Z0-9._\-/]+$/.test(name)
-  );
+  if (!name || name.length === 0 || name.length >= MAX_BRANCH_NAME_LENGTH) return false;
+  if (name.startsWith('-') || name.startsWith('.')) return false;
+  if (name.includes('..')) return false;
+  if (name.includes('/')) return false;
+  if (name.includes('\0')) return false;
+  return /^[a-zA-Z0-9._-]+$/.test(name);
 }
 
 /**

@@ -185,13 +185,11 @@ export function createCheckoutBranchHandler(events?: EventEmitter) {
 }
 
 /**
- * Determine whether an error message represents a client error (400)
+ * Determine whether an error message represents a client error (400).
+ * Stash failures are server-side errors and are intentionally excluded here
+ * so they are returned as HTTP 500 rather than HTTP 400.
  */
 function isBranchError(error?: string): boolean {
   if (!error) return false;
-  return (
-    error.includes('already exists') ||
-    error.includes('does not exist') ||
-    error.includes('Failed to stash')
-  );
+  return error.includes('already exists') || error.includes('does not exist');
 }

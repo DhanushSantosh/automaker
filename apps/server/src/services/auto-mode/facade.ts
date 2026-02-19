@@ -519,17 +519,15 @@ export class AutoModeServiceFacade {
     useWorktrees = false,
     _calledInternally = false
   ): Promise<void> {
-    try {
-      return await this.recoveryService.resumeFeature(
-        this.projectPath,
-        featureId,
-        useWorktrees,
-        _calledInternally
-      );
-    } catch (error) {
-      this.handleFacadeError(error, 'resumeFeature', featureId);
-      throw error;
-    }
+    // Do not call handleFacadeError here: ExecutionService.executeFeature already
+    // classifies and emits auto_mode_error, so calling handleFacadeError would
+    // produce duplicate error events. Simply let the error propagate to the caller.
+    return await this.recoveryService.resumeFeature(
+      this.projectPath,
+      featureId,
+      useWorktrees,
+      _calledInternally
+    );
   }
 
   /**

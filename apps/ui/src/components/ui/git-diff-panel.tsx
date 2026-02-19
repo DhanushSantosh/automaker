@@ -641,6 +641,12 @@ export function GitDiffPanel({
   const handleStageAll = useCallback(async () => {
     const allPaths = files.map((f) => f.path);
     if (allPaths.length === 0) return;
+    if (enableStaging && useWorktrees && !worktreePath) {
+      toast.error('Failed to stage all files', {
+        description: 'worktreePath required when useWorktrees is enabled',
+      });
+      return;
+    }
     await executeStagingAction(
       'stage',
       allPaths,
@@ -649,11 +655,17 @@ export function GitDiffPanel({
       () => setStagingInProgress(new Set(allPaths)),
       () => setStagingInProgress(new Set())
     );
-  }, [worktreePath, projectPath, useWorktrees, files, executeStagingAction]);
+  }, [worktreePath, projectPath, useWorktrees, enableStaging, files, executeStagingAction]);
 
   const handleUnstageAll = useCallback(async () => {
     const allPaths = files.map((f) => f.path);
     if (allPaths.length === 0) return;
+    if (enableStaging && useWorktrees && !worktreePath) {
+      toast.error('Failed to unstage all files', {
+        description: 'worktreePath required when useWorktrees is enabled',
+      });
+      return;
+    }
     await executeStagingAction(
       'unstage',
       allPaths,
@@ -662,7 +674,7 @@ export function GitDiffPanel({
       () => setStagingInProgress(new Set(allPaths)),
       () => setStagingInProgress(new Set())
     );
-  }, [worktreePath, projectPath, useWorktrees, files, executeStagingAction]);
+  }, [worktreePath, projectPath, useWorktrees, enableStaging, files, executeStagingAction]);
 
   // Compute staging summary
   const stagingSummary = useMemo(() => {
@@ -899,68 +911,70 @@ export function GitDiffPanel({
                 {/* Fallback for files that have no diff content (shouldn't happen after fix, but safety net) */}
                 {files.length > 0 && parsedDiffs.length === 0 && (
                   <div className="space-y-2">
-                    {files.map((file) => (
-                      <div
-                        key={file.path}
-                        className="border border-border rounded-lg overflow-hidden"
-                      >
-                        <div className="w-full px-3 py-2 flex items-center gap-2 text-left bg-card">
-                          {getFileIcon(file.status)}
-                          <TruncatedFilePath
-                            path={file.path}
-                            className="flex-1 text-sm font-mono text-foreground"
-                          />
-                          {enableStaging && <StagingBadge state={getStagingState(file)} />}
-                          <span
-                            className={cn(
-                              'text-xs px-1.5 py-0.5 rounded border font-medium',
-                              getStatusBadgeColor(file.status)
-                            )}
-                          >
-                            {getStatusDisplayName(file.status)}
-                          </span>
-                          {enableStaging && (
-                            <div className="flex items-center gap-1 ml-1">
-                              {stagingInProgress.has(file.path) ? (
-                                <Spinner size="sm" />
-                              ) : getStagingState(file) === 'staged' ||
-                                getStagingState(file) === 'partial' ? (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 px-2 text-xs"
-                                  onClick={() => handleUnstageFile(file.path)}
-                                  title="Unstage file"
-                                >
-                                  <Minus className="w-3 h-3 mr-1" />
-                                  Unstage
-                                </Button>
-                              ) : (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 px-2 text-xs"
-                                  onClick={() => handleStageFile(file.path)}
-                                  title="Stage file"
-                                >
-                                  <Plus className="w-3 h-3 mr-1" />
-                                  Stage
-                                </Button>
+                    {files.map((file) => {
+                      const stagingState = getStagingState(file);
+                      return (
+                        <div
+                          key={file.path}
+                          className="border border-border rounded-lg overflow-hidden"
+                        >
+                          <div className="w-full px-3 py-2 flex items-center gap-2 text-left bg-card">
+                            {getFileIcon(file.status)}
+                            <TruncatedFilePath
+                              path={file.path}
+                              className="flex-1 text-sm font-mono text-foreground"
+                            />
+                            {enableStaging && <StagingBadge state={stagingState} />}
+                            <span
+                              className={cn(
+                                'text-xs px-1.5 py-0.5 rounded border font-medium',
+                                getStatusBadgeColor(file.status)
                               )}
-                            </div>
-                          )}
+                            >
+                              {getStatusDisplayName(file.status)}
+                            </span>
+                            {enableStaging && (
+                              <div className="flex items-center gap-1 ml-1">
+                                {stagingInProgress.has(file.path) ? (
+                                  <Spinner size="sm" />
+                                ) : stagingState === 'staged' || stagingState === 'partial' ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2 text-xs"
+                                    onClick={() => handleUnstageFile(file.path)}
+                                    title="Unstage file"
+                                  >
+                                    <Minus className="w-3 h-3 mr-1" />
+                                    Unstage
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2 text-xs"
+                                    onClick={() => handleStageFile(file.path)}
+                                    title="Stage file"
+                                  >
+                                    <Plus className="w-3 h-3 mr-1" />
+                                    Stage
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <div className="px-4 py-3 text-sm text-muted-foreground bg-background border-t border-border">
+                            {file.status === '?' ? (
+                              <span>New file - content preview not available</span>
+                            ) : file.status === 'D' ? (
+                              <span>File deleted</span>
+                            ) : (
+                              <span>Diff content not available</span>
+                            )}
+                          </div>
                         </div>
-                        <div className="px-4 py-3 text-sm text-muted-foreground bg-background border-t border-border">
-                          {file.status === '?' ? (
-                            <span>New file - content preview not available</span>
-                          ) : file.status === 'D' ? (
-                            <span>File deleted</span>
-                          ) : (
-                            <span>Diff content not available</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
