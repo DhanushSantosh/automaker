@@ -1444,6 +1444,21 @@ export interface ProjectSettings {
    */
   defaultFeatureModel?: PhaseModelEntry;
 
+  // Terminal Quick Scripts (per-project)
+  /**
+   * Quick-access terminal scripts shown in the terminal header dropdown.
+   * Each script is a command that can be run with one click.
+   * Examples: "npm run dev", "npm run test", "npm run lint", "npm run format"
+   */
+  terminalScripts?: Array<{
+    /** Unique identifier for this script */
+    id: string;
+    /** Display name shown in the dropdown menu */
+    name: string;
+    /** The command to execute in the terminal */
+    command: string;
+  }>;
+
   // Terminal Configuration Override (per-project)
   /** Project-specific terminal config overrides */
   terminalConfig?: {
@@ -1514,8 +1529,8 @@ export const DEFAULT_PHASE_MODELS: PhaseModelConfig = {
 export const SETTINGS_VERSION = 6;
 /** Current version of the credentials schema */
 export const CREDENTIALS_VERSION = 1;
-/** Current version of the project settings schema */
-export const PROJECT_SETTINGS_VERSION = 1;
+/** Current version of the project settings schema (bumped for terminalScripts field) */
+export const PROJECT_SETTINGS_VERSION = 2;
 
 /** Default maximum concurrent agents for auto mode */
 export const DEFAULT_MAX_CONCURRENCY = 1;

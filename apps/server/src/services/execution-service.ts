@@ -168,6 +168,20 @@ ${feature.spec}
       feature = await this.loadFeatureFn(projectPath, featureId);
       if (!feature) throw new Error(`Feature ${featureId} not found`);
 
+      // Update status to in_progress immediately after acquiring the feature.
+      // This prevents a race condition where the UI reloads features and sees the
+      // feature still in 'backlog' status while it's actually being executed.
+      // Only do this for the initial call (not internal/recursive calls which would
+      // redundantly update the status).
+      if (
+        !options?._calledInternally &&
+        (feature.status === 'backlog' ||
+          feature.status === 'ready' ||
+          feature.status === 'interrupted')
+      ) {
+        await this.updateFeatureStatusFn(projectPath, featureId, 'in_progress');
+      }
+
       if (!options?.continuationPrompt) {
         if (feature.planSpec?.status === 'approved') {
           const prompts = await getPromptCustomization(this.settingsService, '[ExecutionService]');
@@ -199,7 +213,18 @@ ${feature.spec}
       validateWorkingDirectory(workDir);
       tempRunningFeature.worktreePath = worktreePath;
       tempRunningFeature.branchName = branchName ?? null;
-      await this.updateFeatureStatusFn(projectPath, featureId, 'in_progress');
+      // Ensure status is in_progress (may already be set from the early update above,
+      // but internal/recursive calls skip the early update and need it here).
+      // Mirror the external guard: only transition when the feature is still in
+      // backlog, ready, or interrupted to avoid overwriting a concurrent terminal status.
+      if (
+        options?._calledInternally &&
+        (feature.status === 'backlog' ||
+          feature.status === 'ready' ||
+          feature.status === 'interrupted')
+      ) {
+        await this.updateFeatureStatusFn(projectPath, featureId, 'in_progress');
+      }
       this.eventBus.emitAutoModeEvent('auto_mode_feature_start', {
         featureId,
         projectPath,

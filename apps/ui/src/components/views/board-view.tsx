@@ -34,7 +34,6 @@ import type { BacklogPlanResult, FeatureStatusWithPipeline } from '@automaker/ty
 import { pathsEqual } from '@/lib/utils';
 import { toast } from 'sonner';
 import { BoardBackgroundModal } from '@/components/dialogs/board-background-modal';
-import { Spinner } from '@/components/ui/spinner';
 import { useShallow } from 'zustand/react/shallow';
 import { useAutoMode } from '@/hooks/use-auto-mode';
 import { resolveModelString } from '@automaker/model-resolver';
@@ -880,7 +879,8 @@ export function BoardView() {
       // Capture existing feature IDs before adding
       const featuresBeforeIds = new Set(useAppStore.getState().features.map((f) => f.id));
       try {
-        await handleAddFeature(featureData);
+        // Create feature directly with in_progress status to avoid brief backlog flash
+        await handleAddFeature({ ...featureData, initialStatus: 'in_progress' });
       } catch (error) {
         logger.error('Failed to create feature:', error);
         toast.error('Failed to create feature', {
@@ -894,7 +894,14 @@ export function BoardView() {
       const newFeature = latestFeatures.find((f) => !featuresBeforeIds.has(f.id));
 
       if (newFeature) {
-        await handleStartImplementation(newFeature);
+        try {
+          await handleStartImplementation(newFeature);
+        } catch (startError) {
+          logger.error('Failed to start implementation for feature:', startError);
+          toast.error('Failed to start feature implementation', {
+            description: startError instanceof Error ? startError.message : 'An error occurred',
+          });
+        }
       } else {
         logger.error('Could not find newly created feature to start it automatically.');
         toast.error('Failed to auto-start feature', {
@@ -1225,6 +1232,7 @@ export function BoardView() {
   const { getColumnFeatures, completedFeatures } = useBoardColumnFeatures({
     features: hookFeatures,
     runningAutoTasks,
+    runningAutoTasksAllWorktrees,
     searchQuery,
     currentWorktreePath,
     currentWorktreeBranch,
@@ -1389,14 +1397,6 @@ export function BoardView() {
     return (
       <div className="flex-1 flex items-center justify-center" data-testid="board-view-no-project">
         <p className="text-muted-foreground">No project selected</p>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center" data-testid="board-view-loading">
-        <Spinner size="lg" />
       </div>
     );
   }

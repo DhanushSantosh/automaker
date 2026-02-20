@@ -1,5 +1,7 @@
 /**
- * POST /list endpoint - List all features for a project
+ * POST/GET /list endpoint - List all features for a project
+ *
+ * projectPath may come from req.body (POST) or req.query (GET fallback).
  *
  * Also performs orphan detection when a project is loaded to identify
  * features whose branches no longer exist. This runs on every project load/switch.
@@ -19,7 +21,17 @@ export function createListHandler(
 ) {
   return async (req: Request, res: Response): Promise<void> => {
     try {
-      const { projectPath } = req.body as { projectPath: string };
+      const bodyProjectPath =
+        typeof req.body === 'object' && req.body !== null
+          ? (req.body as { projectPath?: unknown }).projectPath
+          : undefined;
+      const queryProjectPath = req.query.projectPath;
+      const projectPath =
+        typeof bodyProjectPath === 'string'
+          ? bodyProjectPath
+          : typeof queryProjectPath === 'string'
+            ? queryProjectPath
+            : undefined;
 
       if (!projectPath) {
         res.status(400).json({ success: false, error: 'projectPath is required' });

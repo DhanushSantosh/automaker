@@ -7,7 +7,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import { createLogger, getErrorMessage } from '@automaker/utils';
+import { createLogger, getErrorMessage, isValidRemoteName } from '@automaker/utils';
 import { execGitCommand, getCurrentBranch, getConflictFiles } from '@automaker/git-utils';
 
 const logger = createLogger('RebaseService');
@@ -15,6 +15,11 @@ const logger = createLogger('RebaseService');
 // ============================================================================
 // Types
 // ============================================================================
+
+export interface RebaseOptions {
+  /** Remote name to fetch from before rebasing (defaults to 'origin') */
+  remote?: string;
+}
 
 export interface RebaseResult {
   success: boolean;
@@ -36,9 +41,14 @@ export interface RebaseResult {
  *
  * @param worktreePath - Path to the git worktree
  * @param ontoBranch - The branch to rebase onto (e.g., 'origin/main')
+ * @param options - Optional rebase options (remote name for fetch)
  * @returns RebaseResult with success/failure information
  */
-export async function runRebase(worktreePath: string, ontoBranch: string): Promise<RebaseResult> {
+export async function runRebase(
+  worktreePath: string,
+  ontoBranch: string,
+  options?: RebaseOptions
+): Promise<RebaseResult> {
   // Reject empty, whitespace-only, or dash-prefixed branch names.
   const normalizedOntoBranch = ontoBranch?.trim() ?? '';
   if (normalizedOntoBranch === '' || normalizedOntoBranch.startsWith('-')) {
@@ -57,6 +67,33 @@ export async function runRebase(worktreePath: string, ontoBranch: string): Promi
       success: false,
       error: `Failed to resolve current branch for worktree "${worktreePath}": ${getErrorMessage(branchErr)}`,
     };
+  }
+
+  // Validate the remote name to prevent git option injection.
+  // Reject invalid remote names so the caller knows their input was wrong,
+  // consistent with how invalid branch names are handled above.
+  const remote = options?.remote || 'origin';
+  if (!isValidRemoteName(remote)) {
+    logger.warn('Invalid remote name supplied to rebase-service', {
+      remote,
+      worktreePath,
+    });
+    return {
+      success: false,
+      error: `Invalid remote name: "${remote}"`,
+    };
+  }
+
+  // Fetch latest from remote before rebasing to ensure we have up-to-date refs
+  try {
+    await execGitCommand(['fetch', remote], worktreePath);
+  } catch (fetchError) {
+    logger.warn('Failed to fetch from remote before rebase; proceeding with local refs', {
+      remote,
+      worktreePath,
+      error: getErrorMessage(fetchError),
+    });
+    // Non-fatal: proceed with local refs if fetch fails (e.g. offline)
   }
 
   try {

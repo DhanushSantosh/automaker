@@ -12,6 +12,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   GitCommit,
   Sparkles,
   FilePlus,
@@ -21,6 +28,7 @@ import {
   File,
   ChevronDown,
   ChevronRight,
+  Upload,
 } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { getElectronAPI } from '@/lib/electron';
@@ -30,6 +38,11 @@ import { cn } from '@/lib/utils';
 import { TruncatedFilePath } from '@/components/ui/truncated-file-path';
 import type { FileStatus } from '@/types/electron';
 import { parseDiff, type ParsedFileDiff } from '@/lib/diff-utils';
+
+interface RemoteInfo {
+  name: string;
+  url: string;
+}
 
 interface WorktreeInfo {
   path: string;
@@ -178,6 +191,17 @@ export function CommitWorktreeDialog({
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [isLoadingDiffs, setIsLoadingDiffs] = useState(false);
 
+  // Push after commit state
+  const [pushAfterCommit, setPushAfterCommit] = useState(false);
+  const [remotes, setRemotes] = useState<RemoteInfo[]>([]);
+  const [selectedRemote, setSelectedRemote] = useState<string>('');
+  const [isLoadingRemotes, setIsLoadingRemotes] = useState(false);
+  const [isPushing, setIsPushing] = useState(false);
+  const [remotesFetched, setRemotesFetched] = useState(false);
+  const [remotesFetchError, setRemotesFetchError] = useState<string | null>(null);
+  // Track whether the commit already succeeded so retries can skip straight to push
+  const [commitSucceeded, setCommitSucceeded] = useState(false);
+
   // Parse diffs
   const parsedDiffs = useMemo(() => parseDiff(diffContent), [diffContent]);
 
@@ -190,6 +214,58 @@ export function CommitWorktreeDialog({
     return map;
   }, [parsedDiffs]);
 
+  // Fetch remotes when push option is enabled
+  const fetchRemotesForWorktree = useCallback(
+    async (worktreePath: string, signal?: { cancelled: boolean }) => {
+      setIsLoadingRemotes(true);
+      setRemotesFetchError(null);
+      try {
+        const api = getElectronAPI();
+        if (api?.worktree?.listRemotes) {
+          const result = await api.worktree.listRemotes(worktreePath);
+          if (signal?.cancelled) return;
+          setRemotesFetched(true);
+          if (result.success && result.result) {
+            const remoteInfos = result.result.remotes.map((r) => ({
+              name: r.name,
+              url: r.url,
+            }));
+            setRemotes(remoteInfos);
+            // Auto-select 'origin' if available, otherwise first remote
+            if (remoteInfos.length > 0) {
+              const defaultRemote = remoteInfos.find((r) => r.name === 'origin') || remoteInfos[0];
+              setSelectedRemote(defaultRemote.name);
+            }
+          }
+        } else {
+          // API not available — mark fetch as complete with an error so the UI
+          // shows feedback instead of remaining in an empty/loading state.
+          setRemotesFetchError('Remote listing not available');
+          setRemotesFetched(true);
+          return;
+        }
+      } catch (err) {
+        if (signal?.cancelled) return;
+        // Don't mark as successfully fetched — show an error with retry instead
+        setRemotesFetchError(err instanceof Error ? err.message : 'Failed to fetch remotes');
+        console.warn('Failed to fetch remotes:', err);
+      } finally {
+        if (!signal?.cancelled) setIsLoadingRemotes(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (pushAfterCommit && worktree && !remotesFetched && !remotesFetchError) {
+      const signal = { cancelled: false };
+      fetchRemotesForWorktree(worktree.path, signal);
+      return () => {
+        signal.cancelled = true;
+      };
+    }
+  }, [pushAfterCommit, worktree, remotesFetched, remotesFetchError, fetchRemotesForWorktree]);
+
   // Load diffs when dialog opens
   useEffect(() => {
     if (open && worktree) {
@@ -198,6 +274,14 @@ export function CommitWorktreeDialog({
       setDiffContent('');
       setSelectedFiles(new Set());
       setExpandedFile(null);
+      // Reset push state
+      setPushAfterCommit(false);
+      setRemotes([]);
+      setSelectedRemote('');
+      setIsPushing(false);
+      setRemotesFetched(false);
+      setRemotesFetchError(null);
+      setCommitSucceeded(false);
 
       let cancelled = false;
 
@@ -278,14 +362,64 @@ export function CommitWorktreeDialog({
     setExpandedFile((prev) => (prev === filePath ? null : filePath));
   }, []);
 
+  /** Shared push helper — returns true if the push succeeded */
+  const performPush = async (
+    api: ReturnType<typeof getElectronAPI>,
+    worktreePath: string,
+    remoteName: string
+  ): Promise<boolean> => {
+    if (!api?.worktree?.push) {
+      toast.error('Push API not available');
+      return false;
+    }
+    setIsPushing(true);
+    try {
+      const pushResult = await api.worktree.push(worktreePath, false, remoteName);
+      if (pushResult.success && pushResult.result) {
+        toast.success('Pushed to remote', {
+          description: pushResult.result.message,
+        });
+        return true;
+      } else {
+        toast.error(pushResult.error || 'Failed to push to remote');
+        return false;
+      }
+    } catch (pushErr) {
+      toast.error(pushErr instanceof Error ? pushErr.message : 'Failed to push to remote');
+      return false;
+    } finally {
+      setIsPushing(false);
+    }
+  };
+
   const handleCommit = async () => {
-    if (!worktree || !message.trim() || selectedFiles.size === 0) return;
+    if (!worktree) return;
+
+    const api = getElectronAPI();
+
+    // If commit already succeeded on a previous attempt, skip straight to push (or close if no push needed)
+    if (commitSucceeded) {
+      if (pushAfterCommit && selectedRemote) {
+        const ok = await performPush(api, worktree.path, selectedRemote);
+        if (ok) {
+          onCommitted();
+          onOpenChange(false);
+          setMessage('');
+        }
+      } else {
+        onCommitted();
+        onOpenChange(false);
+        setMessage('');
+      }
+      return;
+    }
+
+    if (!message.trim() || selectedFiles.size === 0) return;
 
     setIsLoading(true);
     setError(null);
 
     try {
-      const api = getElectronAPI();
       if (!api?.worktree?.commit) {
         setError('Worktree API not available');
         return;
@@ -299,12 +433,27 @@ export function CommitWorktreeDialog({
 
       if (result.success && result.result) {
         if (result.result.committed) {
+          setCommitSucceeded(true);
           toast.success('Changes committed', {
             description: `Commit ${result.result.commitHash} on ${result.result.branch}`,
           });
-          onCommitted();
-          onOpenChange(false);
-          setMessage('');
+
+          // Push after commit if enabled
+          let pushSucceeded = false;
+          if (pushAfterCommit && selectedRemote) {
+            pushSucceeded = await performPush(api, worktree.path, selectedRemote);
+          }
+
+          // Only close the dialog when no push was requested or the push completed successfully.
+          // If push failed, keep the dialog open so the user can retry.
+          if (!pushAfterCommit || pushSucceeded) {
+            onCommitted();
+            onOpenChange(false);
+            setMessage('');
+          } else {
+            // Commit succeeded but push failed — notify parent of commit but keep dialog open for retry
+            onCommitted();
+          }
         } else {
           toast.info('No changes to commit', {
             description: result.result.message,
@@ -320,16 +469,30 @@ export function CommitWorktreeDialog({
     }
   };
 
+  // When the commit succeeded but push failed, allow retrying the push without
+  // requiring a commit message or file selection.
+  const isPushRetry = commitSucceeded && pushAfterCommit && !isPushing;
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (
       e.key === 'Enter' &&
       (e.metaKey || e.ctrlKey) &&
       !isLoading &&
-      !isGenerating &&
-      message.trim() &&
-      selectedFiles.size > 0
+      !isPushing &&
+      !isGenerating
     ) {
-      handleCommit();
+      if (isPushRetry) {
+        // Push retry only needs a selected remote
+        if (selectedRemote) {
+          handleCommit();
+        }
+      } else if (
+        message.trim() &&
+        selectedFiles.size > 0 &&
+        !(pushAfterCommit && !selectedRemote)
+      ) {
+        handleCommit();
+      }
     }
   };
 
@@ -390,8 +553,19 @@ export function CommitWorktreeDialog({
 
   const allSelected = selectedFiles.size === files.length && files.length > 0;
 
+  // Prevent the dialog from being dismissed while a push is in progress.
+  // Overlay clicks and Escape key both route through onOpenChange(false); we
+  // intercept those here so the UI stays open until the push completes.
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && isPushing) {
+      // Ignore close requests during an active push.
+      return;
+    }
+    onOpenChange(nextOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[700px] max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -580,9 +754,80 @@ export function CommitWorktreeDialog({
             {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
 
+          {/* Push after commit option */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="push-after-commit"
+                checked={pushAfterCommit}
+                onCheckedChange={(checked) => setPushAfterCommit(checked === true)}
+              />
+              <Label
+                htmlFor="push-after-commit"
+                className="text-sm font-medium cursor-pointer flex items-center gap-1.5"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Push to remote after commit
+              </Label>
+            </div>
+
+            {pushAfterCommit && (
+              <div className="ml-6 flex flex-col gap-1.5">
+                {isLoadingRemotes || (!remotesFetched && !remotesFetchError) ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Spinner size="sm" />
+                    <span>Loading remotes...</span>
+                  </div>
+                ) : remotesFetchError ? (
+                  <div className="flex items-center gap-2 text-sm text-destructive">
+                    <span>Failed to load remotes.</span>
+                    <button
+                      className="text-xs underline hover:text-foreground transition-colors"
+                      onClick={() => {
+                        if (worktree) {
+                          setRemotesFetchError(null);
+                        }
+                      }}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : remotes.length === 0 && remotesFetched ? (
+                  <p className="text-sm text-muted-foreground">
+                    No remotes configured for this repository.
+                  </p>
+                ) : remotes.length > 0 ? (
+                  <div className="flex items-center gap-2">
+                    <Label
+                      htmlFor="remote-select"
+                      className="text-xs text-muted-foreground whitespace-nowrap"
+                    >
+                      Remote:
+                    </Label>
+                    <Select value={selectedRemote} onValueChange={setSelectedRemote}>
+                      <SelectTrigger id="remote-select" className="h-8 text-xs flex-1">
+                        <SelectValue placeholder="Select remote" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {remotes.map((remote) => (
+                          <SelectItem key={remote.name} value={remote.name}>
+                            <span className="font-medium">{remote.name}</span>
+                            <span className="ml-2 text-muted-foreground text-xs inline-block truncate max-w-[200px] align-bottom">
+                              {remote.url}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+
           <p className="text-xs text-muted-foreground">
             Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Cmd/Ctrl+Enter</kbd> to
-            commit
+            commit{pushAfterCommit ? ' & push' : ''}
           </p>
         </div>
 
@@ -590,23 +835,41 @@ export function CommitWorktreeDialog({
           <Button
             variant="ghost"
             onClick={() => onOpenChange(false)}
-            disabled={isLoading || isGenerating}
+            disabled={isLoading || isPushing || isGenerating}
           >
             Cancel
           </Button>
           <Button
             onClick={handleCommit}
-            disabled={isLoading || isGenerating || !message.trim() || selectedFiles.size === 0}
+            disabled={
+              isLoading ||
+              isPushing ||
+              isGenerating ||
+              (isPushRetry
+                ? !selectedRemote
+                : !message.trim() ||
+                  selectedFiles.size === 0 ||
+                  (pushAfterCommit && !selectedRemote))
+            }
           >
-            {isLoading ? (
+            {isLoading || isPushing ? (
               <>
                 <Spinner size="sm" className="mr-2" />
-                Committing...
+                {isPushing ? 'Pushing...' : 'Committing...'}
+              </>
+            ) : isPushRetry ? (
+              <>
+                <Upload className="w-4 h-4 mr-2" />
+                Retry Push
               </>
             ) : (
               <>
-                <GitCommit className="w-4 h-4 mr-2" />
-                Commit
+                {pushAfterCommit ? (
+                  <Upload className="w-4 h-4 mr-2" />
+                ) : (
+                  <GitCommit className="w-4 h-4 mr-2" />
+                )}
+                {pushAfterCommit ? 'Commit & Push' : 'Commit'}
                 {selectedFiles.size > 0 && selectedFiles.size < files.length
                   ? ` (${selectedFiles.size} file${selectedFiles.size > 1 ? 's' : ''})`
                   : ''}

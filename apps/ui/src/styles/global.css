@@ -410,7 +410,8 @@
     overflow: hidden;
     overscroll-behavior: none;
     padding-top: env(safe-area-inset-top, 0px);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* Default bottom inset: reduced multiplier to balance home-indicator clearance with screen space */
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) * 0.1);
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
   }
@@ -551,6 +552,24 @@
   /* Disable iOS long-press context menu - apply only to non-interactive chrome elements */
   .no-touch-callout {
     -webkit-touch-callout: none;
+  }
+
+  /* Safe-area padding for full-screen mobile dialogs (e.g. view changes, commits).
+     Prevents overlap with the Dynamic Island / notch on iOS.
+     Uses calc() to ADD safe-area insets to the existing 1.5rem (p-6) padding from
+     DialogContent, so on non-notched devices the base p-6 padding is preserved.
+     On sm+ (desktop), the dialog is centered and not full-screen, so restore
+     the plain 1.5rem top/bottom padding. */
+  .dialog-fullscreen-mobile {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 1.5rem);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1.5rem);
+  }
+
+  @media (min-width: 640px) {
+    .dialog-fullscreen-mobile {
+      padding-top: 1.5rem;
+      padding-bottom: 1.5rem;
+    }
   }
 
   .glass-subtle {

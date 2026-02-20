@@ -1,8 +1,8 @@
 // Automaker Service Worker - Optimized for mobile PWA loading performance
 // NOTE: CACHE_NAME is injected with a build hash at build time by the swCacheBuster
 // Vite plugin (see vite.config.mts). In development it stays as-is; in production
-// builds it becomes e.g. 'automaker-v3-a1b2c3d4' for automatic cache invalidation.
-const CACHE_NAME = 'automaker-v3'; // replaced at build time → 'automaker-v3-<hash>'
+// builds it becomes e.g. 'automaker-v5-a1b2c3d4' for automatic cache invalidation.
+const CACHE_NAME = 'automaker-v5'; // replaced at build time → 'automaker-v5-<hash>'
 
 // Separate cache for immutable hashed assets (long-lived)
 const IMMUTABLE_CACHE = 'automaker-immutable-v2';
@@ -13,12 +13,19 @@ const API_CACHE = 'automaker-api-v1';
 // Assets to cache on install (app shell for instant loading)
 const SHELL_ASSETS = [
   '/',
+  '/index.html',
   '/manifest.json',
   '/logo.png',
   '/logo_larger.png',
   '/automaker.svg',
   '/favicon.ico',
 ];
+
+// Critical JS/CSS assets extracted from index.html at build time by the swCacheBuster
+// Vite plugin. Populated during production builds; empty in dev mode.
+// These are precached on SW install so that PWA cold starts after memory eviction
+// serve instantly from cache instead of requiring a full network download.
+const CRITICAL_ASSETS = [];
 
 // Whether mobile caching is enabled (set via message from main thread).
 // Persisted to Cache Storage so it survives aggressive SW termination on mobile.
@@ -60,7 +67,10 @@ async function restoreMobileMode() {
 }
 
 // Restore mobileMode immediately on SW startup
-restoreMobileMode();
+// Keep a promise so fetch handlers can await restoration on cold SW starts.
+// This prevents a race where early API requests run before mobileMode is loaded
+// from Cache Storage, incorrectly falling back to network-first.
+const mobileModeRestorePromise = restoreMobileMode();
 
 // API endpoints that are safe to serve from stale cache on mobile.
 // These are GET-only, read-heavy endpoints where showing slightly stale data
@@ -121,13 +131,68 @@ async function addCacheTimestamp(response) {
 }
 
 self.addEventListener('install', (event) => {
+  // Cache the app shell AND critical JS/CSS assets so the PWA loads instantly.
+  // SHELL_ASSETS go into CACHE_NAME (general cache), CRITICAL_ASSETS go into
+  // IMMUTABLE_CACHE (long-lived, content-hashed assets). This ensures that even
+  // the very first visit populates the immutable cache — previously, assets were
+  // only cached on fetch interception, but the SW isn't active during the first
+  // page load so nothing got cached until the second visit.
+  //
+  // self.skipWaiting() is NOT called here — activation is deferred until the main
+  // thread sends a SKIP_WAITING message to avoid disrupting a live page.
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(SHELL_ASSETS);
-    })
+    Promise.all([
+      // Cache app shell (HTML, icons, manifest) using individual fetch+put instead of
+      // cache.addAll(). This is critical because cache.addAll() respects the server's
+      // Cache-Control response headers — if the server sends 'Cache-Control: no-store'
+      // (which Vite dev server does for index.html), addAll() silently skips caching
+      // and the pre-React loading spinner is never served from cache.
+      //
+      // cache.put() bypasses Cache-Control headers entirely, ensuring the app shell
+      // is always cached on install regardless of what the server sends. This is the
+      // correct approach for SW-managed caches where the SW (not HTTP headers) controls
+      // freshness via the activate event's cache cleanup and the navigation strategy's
+      // background revalidation.
+      caches.open(CACHE_NAME).then((cache) =>
+        Promise.all(
+          SHELL_ASSETS.map((url) =>
+            fetch(url)
+              .then((response) => {
+                if (response.ok) return cache.put(url, response);
+              })
+              .catch(() => {
+                // Individual asset fetch failure is non-fatal — the SW still activates
+                // and the next navigation will populate the cache via Strategy 3.
+              })
+          )
+        )
+      ),
+      // Cache critical JS/CSS bundles (injected at build time by swCacheBuster).
+      // Uses individual fetch+put instead of cache.addAll() so a single asset
+      // failure doesn't prevent the rest from being cached.
+      //
+      // IMPORTANT: We fetch with { mode: 'cors' } because Vite's output HTML uses
+      // <script type="module" crossorigin> and <link rel="modulepreload" crossorigin>
+      // for these assets. The Cache API keys entries by URL + request mode, so a
+      // no-cors cached response won't match a cors-mode browser request. Fetching
+      // with cors mode here ensures the cached entries match what the browser requests.
+      CRITICAL_ASSETS.length > 0
+        ? caches.open(IMMUTABLE_CACHE).then((cache) =>
+            Promise.all(
+              CRITICAL_ASSETS.map((url) =>
+                fetch(url, { mode: 'cors' })
+                  .then((response) => {
+                    if (response.ok) return cache.put(url, response);
+                  })
+                  .catch(() => {
+                    // Individual asset fetch failure is non-fatal
+                  })
+              )
+            )
+          )
+        : Promise.resolve(),
+    ])
   );
-  // Activate immediately without waiting for existing clients
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -145,10 +210,23 @@ self.addEventListener('activate', (event) => {
       // When enabled, the browser fires the navigation fetch in parallel with
       // service worker boot, eliminating the SW startup delay (~50-200ms on mobile).
       self.registration.navigationPreload && self.registration.navigationPreload.enable(),
+      // Claim clients so this SW immediately controls all open pages.
+      //
+      // This is safe in all activation scenarios:
+      // 1. First install: No old SW exists — claiming is a no-op with no side effects.
+      //    Critically, this lets the fetch handler intercept requests during the same
+      //    visit that registered the SW, populating the immutable cache.
+      // 2. SKIP_WAITING from main thread: The page is freshly loaded, so claiming
+      //    won't cause a visible flash (the SW was explicitly asked to take over).
+      // 3. Natural activation (all old-SW tabs closed): The new SW activates when
+      //    no pages are using the old SW, so claiming controls only new navigations.
+      //
+      // Without clients.claim(), the SW's fetch handler would not intercept any
+      // requests until the next full navigation — meaning the first visit after
+      // install would not benefit from the cache-first asset strategy.
+      self.clients.claim(),
     ])
   );
-  // Take control of all clients immediately
-  self.clients.claim();
 });
 
 /**
@@ -159,14 +237,31 @@ self.addEventListener('activate', (event) => {
 function isImmutableAsset(url) {
   const path = url.pathname;
   // Match Vite's hashed asset pattern: /assets/<name>-<hash>.<ext>
+  // This covers JS bundles, CSS, and font files that Vite outputs to /assets/
+  // with content hashes (e.g., /assets/font-inter-WC6UYoCP.js).
+  // Note: We intentionally do NOT cache all font files globally — only those
+  // under /assets/ (which are Vite-processed, content-hashed, and actively used).
+  // There are 639+ font files (~20MB total) across all font families; caching them
+  // all would push iOS toward its ~50MB PWA quota and trigger eviction of everything.
   if (path.startsWith('/assets/') && /-[A-Za-z0-9_-]{6,}\.\w+$/.test(path)) {
     return true;
   }
-  // Font files are immutable (woff2, woff, ttf, otf)
-  if (/\.(woff2?|ttf|otf)$/.test(path)) {
-    return true;
-  }
   return false;
+}
+
+/**
+ * Determine if a request is for app code (JS/CSS) that should be cached aggressively.
+ * This includes both production /assets/* bundles and development /src/* modules.
+ *
+ * The path.startsWith('/src/') check is dev-only — in development the Vite dev server
+ * serves source files directly from /src/*. In production all code is bundled under
+ * /assets/*, so the /src/ check is harmless but only present for developer convenience.
+ */
+function isCodeAsset(url) {
+  const path = url.pathname;
+  const isScriptOrStyle = /\.(m?js|css|tsx?)$/.test(path);
+  if (!isScriptOrStyle) return false;
+  return path.startsWith('/assets/') || path.startsWith('/src/');
 }
 
 /**
@@ -203,69 +298,95 @@ self.addEventListener('fetch', (event) => {
   // The main thread's React Query layer handles the eventual fresh data via its
   // own refetching mechanism, so the user sees updates within seconds.
   if (url.pathname.startsWith('/api/')) {
-    if (mobileMode && isCacheableApiRequest(url)) {
-      event.respondWith(
-        (async () => {
-          const cache = await caches.open(API_CACHE);
-          const cachedResponse = await cache.match(event.request);
+    event.respondWith(
+      (async () => {
+        // On mobile, service workers are frequently terminated and restarted.
+        // Ensure persisted mobileMode is restored before deciding strategy so the
+        // very first API requests after restart can hit cache immediately.
+        try {
+          await mobileModeRestorePromise;
+        } catch (_e) {
+          // Best-effort restore — keep default mobileMode value on failure.
+        }
 
-          // Helper: start a network fetch that updates the cache on success.
-          // Lazily invoked so we don't fire a network request when the cache
-          // is already fresh — saves bandwidth and battery on mobile.
-          const startNetworkFetch = () =>
-            fetch(event.request)
-              .then(async (networkResponse) => {
-                if (networkResponse.ok) {
-                  // Store with timestamp for freshness checking
-                  const timestampedResponse = await addCacheTimestamp(networkResponse);
-                  cache.put(event.request, timestampedResponse);
-                }
+        if (!(mobileMode && isCacheableApiRequest(url))) {
+          // Non-mobile or non-cacheable API: skip SW caching and use network.
+          return fetch(event.request);
+        }
+
+        const cache = await caches.open(API_CACHE);
+        const cachedResponse = await cache.match(event.request);
+
+        // Helper: start a network fetch that updates the cache on success.
+        // Lazily invoked so we don't fire a network request when the cache
+        // is already fresh — saves bandwidth and battery on mobile.
+        const startNetworkFetch = () =>
+          fetch(event.request)
+            .then(async (networkResponse) => {
+              if (networkResponse.ok) {
+                // Store with timestamp for freshness checking
+                const timestampedResponse = await addCacheTimestamp(networkResponse);
+                cache.put(event.request, timestampedResponse);
                 return networkResponse;
-              })
-              .catch((err) => {
-                // Network failed - if we have cache, that's fine (returned below)
-                // If no cache, propagate the error
-                if (cachedResponse) return null;
-                throw err;
-              });
+              }
+              // Non-ok response (e.g. 5xx) — don't resolve with it for the race
+              // so the caller falls back to cachedResponse instead of showing an error page.
+              if (cachedResponse) return null;
+              return networkResponse;
+            })
+            .catch((err) => {
+              // Network failed - if we have cache, that's fine (returned below)
+              // If no cache, propagate the error
+              if (cachedResponse) return null;
+              throw err;
+            });
 
-          // If we have a fresh-enough cached response, return it immediately
-          // without firing a background fetch — React Query's own refetching
-          // will request fresh data when its stale time expires.
-          if (cachedResponse && isApiCacheFresh(cachedResponse)) {
-            return cachedResponse;
+        // If we have a fresh-enough cached response, return it immediately
+        // without firing a background fetch — React Query's own refetching
+        // will request fresh data when its stale time expires.
+        if (cachedResponse && isApiCacheFresh(cachedResponse)) {
+          return cachedResponse;
+        }
+
+        // From here the cache is either stale or missing — start the network fetch.
+        const fetchPromise = startNetworkFetch();
+
+        // If we have a stale cached response but network is slow, race them:
+        // Return whichever resolves first (cached immediately vs network)
+        if (cachedResponse) {
+          // Give network a brief window (2s) to respond, otherwise use stale cache
+          const networkResult = await Promise.race([
+            fetchPromise,
+            new Promise((resolve) => setTimeout(() => resolve(null), 2000)),
+          ]);
+          if (!networkResult) {
+            // Timeout won — keep the background fetch alive so the cache update
+            // can complete even after we return the stale cached response.
+            event.waitUntil(fetchPromise.catch(() => {}));
           }
+          return networkResult || cachedResponse;
+        }
 
-          // From here the cache is either stale or missing — start the network fetch.
-          const fetchPromise = startNetworkFetch();
-
-          // If we have a stale cached response but network is slow, race them:
-          // Return whichever resolves first (cached immediately vs network)
-          if (cachedResponse) {
-            // Give network a brief window (2s) to respond, otherwise use stale cache
-            const networkResult = await Promise.race([
-              fetchPromise,
-              new Promise((resolve) => setTimeout(() => resolve(null), 2000)),
-            ]);
-            return networkResult || cachedResponse;
-          }
-
-          // No cache at all - must wait for network
-          return fetchPromise;
-        })()
-      );
-      return;
-    }
-    // Non-mobile or non-cacheable API: skip SW, let browser handle normally
+        // No cache at all - must wait for network
+        return fetchPromise;
+      })()
+    );
     return;
   }
 
   // Strategy 1: Cache-first for immutable hashed assets (JS/CSS bundles, fonts)
   // These files contain content hashes in their names - they never change.
+  //
+  // Uses { ignoreVary: true } for cache matching because the same asset URL
+  // can be requested with different modes: <link rel="prefetch"> uses no-cors,
+  // <script type="module" crossorigin> and <link rel="modulepreload" crossorigin>
+  // use cors. Without ignoreVary, a cors-mode browser request won't match a
+  // no-cors cached entry (or vice versa), causing unnecessary network fetches
+  // even when the asset is already in the cache.
   if (isImmutableAsset(url)) {
     event.respondWith(
       caches.open(IMMUTABLE_CACHE).then((cache) => {
-        return cache.match(event.request).then((cachedResponse) => {
+        return cache.match(event.request, { ignoreVary: true }).then((cachedResponse) => {
           if (cachedResponse) {
             return cachedResponse;
           }
@@ -277,6 +398,59 @@ self.addEventListener('fetch', (event) => {
           });
         });
       })
+    );
+    return;
+  }
+
+  // Strategy 1b: Cache-first for app code assets that are not immutable-hashed.
+  // This removes network-coupled startup delays for pre-React boot files when
+  // they are served without content hashes (for example, dev-like module paths).
+  if (isCodeAsset(url)) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then((cache) =>
+        cache.match(event.request).then((cachedResponse) => {
+          const fetchPromise = fetch(event.request)
+            .then((networkResponse) => {
+              if (networkResponse.ok) {
+                cache.put(event.request, networkResponse.clone());
+              }
+              return networkResponse;
+            })
+            .catch(() => {
+              if (cachedResponse) return cachedResponse;
+              // Return a safe no-op response matching the asset type so the browser
+              // can parse it without errors, instead of a plain-text 503.
+              const dest = event.request.destination;
+              const urlPath = url.pathname;
+              if (dest === 'script' || urlPath.endsWith('.js') || urlPath.endsWith('.mjs')) {
+                return new Response('// offline', {
+                  status: 503,
+                  statusText: 'Service Unavailable',
+                  headers: { 'Content-Type': 'application/javascript' },
+                });
+              }
+              if (dest === 'style' || urlPath.endsWith('.css')) {
+                return new Response('/* offline */', {
+                  status: 503,
+                  statusText: 'Service Unavailable',
+                  headers: { 'Content-Type': 'text/css' },
+                });
+              }
+              return new Response('Service Unavailable', {
+                status: 503,
+                statusText: 'Service Unavailable',
+                headers: { 'Content-Type': 'text/plain' },
+              });
+            });
+
+          if (cachedResponse) {
+            event.waitUntil(fetchPromise.catch(() => {}));
+            return cachedResponse;
+          }
+
+          return fetchPromise;
+        })
+      )
     );
     return;
   }
@@ -304,43 +478,55 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Strategy 3: Network-first for navigation requests (HTML)
-  // Uses Navigation Preload when available - the browser fires the network request
-  // in parallel with SW startup, eliminating the ~50-200ms SW boot delay on mobile.
-  // Falls back to regular fetch when Navigation Preload is not supported.
+  // Strategy 3: Cache-first with background revalidation for navigation requests (HTML)
+  //
+  // The app shell (index.html) is a thin SPA entry point — its content rarely changes
+  // meaningfully between deploys because all JS/CSS bundles are content-hashed. Serving
+  // it from cache first eliminates the visible "reload flash" that occurs when the user
+  // switches back to the PWA and the old network-first strategy went to the network.
+  //
+  // The background revalidation ensures the cache stays fresh for the NEXT navigation,
+  // so new deployments are picked up within one page visit. Navigation Preload is used
+  // for the background fetch when available (no extra latency cost).
   if (isNavigationRequest(event.request)) {
     event.respondWith(
       (async () => {
-        try {
-          // Use the preloaded response if available (fired during SW boot)
-          // This is the key mobile performance win - no waiting for SW to start
-          const preloadResponse = event.preloadResponse && (await event.preloadResponse);
-          if (preloadResponse) {
-            // Cache the preloaded response for offline use
-            if (preloadResponse.ok && preloadResponse.type === 'basic') {
-              const clone = preloadResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-            }
-            return preloadResponse;
-          }
+        const cache = await caches.open(CACHE_NAME);
+        const cachedResponse = (await cache.match(event.request)) || (await cache.match('/'));
 
-          // Fallback to regular fetch if Navigation Preload is not available
-          const response = await fetch(event.request);
+        // Start a background fetch to update the cache for next time.
+        // Uses Navigation Preload if available (already in-flight, no extra cost).
+        const updateCache = async () => {
+          try {
+            const preloadResponse = event.preloadResponse && (await event.preloadResponse);
+            const freshResponse = preloadResponse || (await fetch(event.request));
+            if (freshResponse.ok && freshResponse.type === 'basic') {
+              await cache.put(event.request, freshResponse.clone());
+            }
+          } catch (_e) {
+            // Network failed — cache stays as-is, still fine for next visit
+          }
+        };
+
+        if (cachedResponse) {
+          // Serve from cache immediately — no network delay, no reload flash.
+          // Update cache in background for the next visit.
+          event.waitUntil(updateCache());
+          return cachedResponse;
+        }
+
+        // No cache yet (first visit) — must go to network
+        try {
+          const preloadResponse = event.preloadResponse && (await event.preloadResponse);
+          const response = preloadResponse || (await fetch(event.request));
           if (response.ok && response.type === 'basic') {
-            const responseClone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone);
-            });
+            // Use event.waitUntil to ensure the cache write completes before
+            // the service worker is terminated (mirrors the cached-path pattern).
+            event.waitUntil(cache.put(event.request, response.clone()));
           }
           return response;
         } catch (_e) {
-          // Offline: serve the cached app shell
-          const cached = await caches.match('/');
-          return (
-            cached ||
-            (await caches.match(event.request)) ||
-            new Response('Offline', { status: 503 })
-          );
+          return new Response('Offline', { status: 503 });
         }
       })()
     );
@@ -391,6 +577,13 @@ self.addEventListener('message', (event) => {
     });
   }
 
+  // Allow the main thread to explicitly activate a waiting service worker.
+  // This is used when the user acknowledges an "Update available" prompt,
+  // or during fresh page loads where it's safe to swap the SW.
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+
   // Enable/disable mobile caching mode.
   // Sent from main thread after detecting the device is mobile.
   // This allows the SW to apply mobile-specific caching strategies.
@@ -404,22 +597,30 @@ self.addEventListener('message', (event) => {
   // Called from the main thread after the initial render is complete,
   // so we don't compete with critical resource loading on mobile.
   if (event.data?.type === 'PRECACHE_ASSETS' && Array.isArray(event.data.urls)) {
-    caches.open(IMMUTABLE_CACHE).then((cache) => {
-      event.data.urls.forEach((url) => {
-        cache.match(url).then((existing) => {
-          if (!existing) {
-            fetch(url, { priority: 'low' })
-              .then((response) => {
-                if (response.ok) {
-                  cache.put(url, response);
-                }
-              })
-              .catch(() => {
-                // Silently ignore precache failures
-              });
-          }
-        });
-      });
-    });
+    event.waitUntil(
+      caches.open(IMMUTABLE_CACHE).then((cache) => {
+        return Promise.all(
+          event.data.urls.map((url) => {
+            // Use ignoreVary so we find assets regardless of the request mode
+            // they were originally cached with (cors vs no-cors).
+            return cache.match(url, { ignoreVary: true }).then((existing) => {
+              if (!existing) {
+                // Fetch with cors mode to match how <script crossorigin> and
+                // <link rel="modulepreload" crossorigin> request these assets.
+                return fetch(url, { mode: 'cors', priority: 'low' })
+                  .then((response) => {
+                    if (response.ok) {
+                      return cache.put(url, response);
+                    }
+                  })
+                  .catch(() => {
+                    // Silently ignore precache failures
+                  });
+              }
+            });
+          })
+        );
+      })
+    );
   }
 });

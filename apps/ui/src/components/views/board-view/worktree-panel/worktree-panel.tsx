@@ -96,11 +96,14 @@ export function WorktreePanel({
     aheadCount,
     behindCount,
     hasRemoteBranch,
+    trackingRemote,
+    getTrackingRemote,
     isLoadingBranches,
     branchFilter,
     setBranchFilter,
     resetBranchFilter,
     fetchBranches,
+    pruneStaleEntries,
     gitRepoStatus,
   } = useBranches();
 
@@ -410,7 +413,7 @@ export function WorktreePanel({
   const [pushToRemoteDialogOpen, setPushToRemoteDialogOpen] = useState(false);
   const [pushToRemoteWorktree, setPushToRemoteWorktree] = useState<WorktreeInfo | null>(null);
 
-  // Merge branch dialog state
+  // Integrate branch dialog state
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeWorktree, setMergeWorktree] = useState<WorktreeInfo | null>(null);
 
@@ -434,6 +437,11 @@ export function WorktreePanel({
   const [pullDialogWorktree, setPullDialogWorktree] = useState<WorktreeInfo | null>(null);
   const [pullDialogRemote, setPullDialogRemote] = useState<string | undefined>(undefined);
 
+  // Remotes cache: maps worktree path -> list of remotes (fetched when dropdown opens)
+  const [remotesCache, setRemotesCache] = useState<
+    Record<string, Array<{ name: string; url: string }>>
+  >({});
+
   const isMobile = useIsMobile();
 
   // Periodic interval check (30 seconds) to detect branch changes on disk
@@ -451,6 +459,21 @@ export function WorktreePanel({
     };
   }, [fetchWorktrees]);
 
+  // Prune stale tracking-remote cache entries and remotes cache when worktrees change
+  useEffect(() => {
+    const activePaths = new Set(worktrees.map((w) => w.path));
+    pruneStaleEntries(activePaths);
+    setRemotesCache((prev) => {
+      const next: typeof prev = {};
+      for (const key of Object.keys(prev)) {
+        if (activePaths.has(key)) {
+          next[key] = prev[key];
+        }
+      }
+      return next;
+    });
+  }, [worktrees, pruneStaleEntries]);
+
   const isWorktreeSelected = (worktree: WorktreeInfo) => {
     return worktree.isMain
       ? currentWorktree === null || currentWorktree === undefined || currentWorktree.path === null
@@ -467,6 +490,23 @@ export function WorktreePanel({
   const handleActionsDropdownOpenChange = (worktree: WorktreeInfo) => (open: boolean) => {
     if (open) {
       fetchBranches(worktree.path);
+      // Fetch remotes for the submenu when the dropdown opens, but only if not already cached
+      if (!remotesCache[worktree.path]) {
+        const api = getHttpApiClient();
+        api.worktree
+          .listRemotes(worktree.path)
+          .then((result) => {
+            if (result.success && result.result) {
+              setRemotesCache((prev) => ({
+                ...prev,
+                [worktree.path]: result.result!.remotes.map((r) => ({ name: r.name, url: r.url })),
+              }));
+            }
+          })
+          .catch((err) => {
+            console.warn('Failed to fetch remotes for worktree:', err);
+          });
+      }
     }
   };
 
@@ -606,10 +646,15 @@ export function WorktreePanel({
     setPushToRemoteDialogOpen(true);
   }, []);
 
-  // Handle pull completed - refresh worktrees
+  // Handle pull completed - refresh branches and worktrees
   const handlePullCompleted = useCallback(() => {
+    // Refresh branch data (ahead/behind counts, tracking) and worktree list
+    // after GitPullDialog completes the pull operation
+    if (pullDialogWorktree) {
+      fetchBranches(pullDialogWorktree.path);
+    }
     fetchWorktrees({ silent: true });
-  }, [fetchWorktrees]);
+  }, [fetchWorktrees, fetchBranches, pullDialogWorktree]);
 
   // Handle pull with remote selection when multiple remotes exist
   // Now opens the pull dialog which handles stash management and conflict resolution
@@ -675,18 +720,37 @@ export function WorktreePanel({
   const handleConfirmSelectRemote = useCallback(
     async (worktree: WorktreeInfo, remote: string) => {
       if (selectRemoteOperation === 'pull') {
-        // Open the pull dialog with the selected remote
+        // Open the pull dialog — let GitPullDialog manage the pull operation
+        // via its useEffect and onPulled callback (handlePullCompleted)
         setPullDialogRemote(remote);
         setPullDialogWorktree(worktree);
         setPullDialogOpen(true);
-        await _handlePull(worktree, remote);
       } else {
         await handlePush(worktree, remote);
+        fetchBranches(worktree.path);
+        fetchWorktrees({ silent: true });
       }
-      fetchBranches(worktree.path);
-      fetchWorktrees();
     },
-    [selectRemoteOperation, _handlePull, handlePush, fetchBranches, fetchWorktrees]
+    [selectRemoteOperation, handlePush, fetchBranches, fetchWorktrees]
+  );
+
+  // Handle pull with a specific remote selected from the submenu (bypasses the remote selection dialog)
+  const handlePullWithSpecificRemote = useCallback((worktree: WorktreeInfo, remote: string) => {
+    // Open the pull dialog — let GitPullDialog manage the pull operation
+    // via its useEffect and onPulled callback (handlePullCompleted)
+    setPullDialogRemote(remote);
+    setPullDialogWorktree(worktree);
+    setPullDialogOpen(true);
+  }, []);
+
+  // Handle push to a specific remote selected from the submenu (bypasses the remote selection dialog)
+  const handlePushWithSpecificRemote = useCallback(
+    async (worktree: WorktreeInfo, remote: string) => {
+      await handlePush(worktree, remote);
+      fetchBranches(worktree.path);
+      fetchWorktrees({ silent: true });
+    },
+    [handlePush, fetchBranches, fetchWorktrees]
   );
 
   // Handle confirming the push to remote dialog
@@ -719,13 +783,13 @@ export function WorktreePanel({
     setMergeDialogOpen(true);
   }, []);
 
-  // Handle merge completion - refresh worktrees and reassign features if branch was deleted
-  const handleMerged = useCallback(
-    (mergedWorktree: WorktreeInfo, deletedBranch: boolean) => {
+  // Handle integration completion - refresh worktrees and reassign features if branch was deleted
+  const handleIntegrated = useCallback(
+    (integratedWorktree: WorktreeInfo, deletedBranch: boolean) => {
       fetchWorktrees();
       // If the branch was deleted, notify parent to reassign features to main
       if (deletedBranch && onBranchDeletedDuringMerge) {
-        onBranchDeletedDuringMerge(mergedWorktree.branch);
+        onBranchDeletedDuringMerge(integratedWorktree.branch);
       }
     },
     [fetchWorktrees, onBranchDeletedDuringMerge]
@@ -777,6 +841,7 @@ export function WorktreePanel({
             aheadCount={aheadCount}
             behindCount={behindCount}
             hasRemoteBranch={hasRemoteBranch}
+            trackingRemote={getTrackingRemote(selectedWorktree.path)}
             isPulling={isPulling}
             isPushing={isPushing}
             isStartingDevServer={isStartingDevServer}
@@ -789,10 +854,13 @@ export function WorktreePanel({
             isStartingTests={isStartingTests}
             isTestRunning={isTestRunningForWorktree(selectedWorktree)}
             testSessionInfo={getTestSessionInfo(selectedWorktree)}
+            remotes={remotesCache[selectedWorktree.path]}
             onOpenChange={handleActionsDropdownOpenChange(selectedWorktree)}
             onPull={handlePullWithRemoteSelection}
             onPush={handlePushWithRemoteSelection}
             onPushNewBranch={handlePushNewBranch}
+            onPullWithRemote={handlePullWithSpecificRemote}
+            onPushWithRemote={handlePushWithSpecificRemote}
             onOpenInEditor={handleOpenInEditor}
             onOpenInIntegratedTerminal={handleOpenInIntegratedTerminal}
             onOpenInExternalTerminal={handleOpenInExternalTerminal}
@@ -952,13 +1020,13 @@ export function WorktreePanel({
           onConfirm={handleConfirmSelectRemote}
         />
 
-        {/* Merge Branch Dialog */}
+        {/* Integrate Branch Dialog */}
         <MergeWorktreeDialog
           open={mergeDialogOpen}
           onOpenChange={setMergeDialogOpen}
           projectPath={projectPath}
           worktree={mergeWorktree}
-          onMerged={handleMerged}
+          onIntegrated={handleIntegrated}
           onCreateConflictResolutionFeature={onCreateMergeConflictResolutionFeature}
         />
 
@@ -1019,6 +1087,8 @@ export function WorktreePanel({
             aheadCount={aheadCount}
             behindCount={behindCount}
             hasRemoteBranch={hasRemoteBranch}
+            trackingRemote={trackingRemote}
+            getTrackingRemote={getTrackingRemote}
             gitRepoStatus={gitRepoStatus}
             hasTestCommand={hasTestCommand}
             isStartingTests={isStartingTests}
@@ -1027,6 +1097,9 @@ export function WorktreePanel({
             onPull={handlePullWithRemoteSelection}
             onPush={handlePushWithRemoteSelection}
             onPushNewBranch={handlePushNewBranch}
+            onPullWithRemote={handlePullWithSpecificRemote}
+            onPushWithRemote={handlePushWithSpecificRemote}
+            remotesCache={remotesCache}
             onOpenInEditor={handleOpenInEditor}
             onOpenInIntegratedTerminal={handleOpenInIntegratedTerminal}
             onOpenInExternalTerminal={handleOpenInExternalTerminal}
@@ -1112,6 +1185,7 @@ export function WorktreePanel({
                 aheadCount={aheadCount}
                 behindCount={behindCount}
                 hasRemoteBranch={hasRemoteBranch}
+                trackingRemote={getTrackingRemote(mainWorktree.path)}
                 gitRepoStatus={gitRepoStatus}
                 isAutoModeRunning={isAutoModeRunningForWorktree(mainWorktree)}
                 isStartingTests={isStartingTests}
@@ -1126,6 +1200,9 @@ export function WorktreePanel({
                 onPull={handlePullWithRemoteSelection}
                 onPush={handlePushWithRemoteSelection}
                 onPushNewBranch={handlePushNewBranch}
+                onPullWithRemote={handlePullWithSpecificRemote}
+                onPushWithRemote={handlePushWithSpecificRemote}
+                remotes={remotesCache[mainWorktree.path]}
                 onOpenInEditor={handleOpenInEditor}
                 onOpenInIntegratedTerminal={handleOpenInIntegratedTerminal}
                 onOpenInExternalTerminal={handleOpenInExternalTerminal}
@@ -1191,6 +1268,7 @@ export function WorktreePanel({
                       aheadCount={aheadCount}
                       behindCount={behindCount}
                       hasRemoteBranch={hasRemoteBranch}
+                      trackingRemote={getTrackingRemote(worktree.path)}
                       gitRepoStatus={gitRepoStatus}
                       isAutoModeRunning={isAutoModeRunningForWorktree(worktree)}
                       isStartingTests={isStartingTests}
@@ -1205,6 +1283,9 @@ export function WorktreePanel({
                       onPull={handlePullWithRemoteSelection}
                       onPush={handlePushWithRemoteSelection}
                       onPushNewBranch={handlePushNewBranch}
+                      onPullWithRemote={handlePullWithSpecificRemote}
+                      onPushWithRemote={handlePushWithSpecificRemote}
+                      remotes={remotesCache[worktree.path]}
                       onOpenInEditor={handleOpenInEditor}
                       onOpenInIntegratedTerminal={handleOpenInIntegratedTerminal}
                       onOpenInExternalTerminal={handleOpenInExternalTerminal}
@@ -1317,13 +1398,13 @@ export function WorktreePanel({
         onConfirm={handleConfirmSelectRemote}
       />
 
-      {/* Merge Branch Dialog */}
+      {/* Integrate Branch Dialog */}
       <MergeWorktreeDialog
         open={mergeDialogOpen}
         onOpenChange={setMergeDialogOpen}
         projectPath={projectPath}
         worktree={mergeWorktree}
-        onMerged={handleMerged}
+        onIntegrated={handleIntegrated}
         onCreateConflictResolutionFeature={onCreateMergeConflictResolutionFeature}
       />
 

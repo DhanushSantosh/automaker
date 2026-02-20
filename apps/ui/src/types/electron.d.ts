@@ -804,7 +804,8 @@ export interface WorktreeAPI {
   // Rebase the current branch onto a target branch
   rebase: (
     worktreePath: string,
-    ontoBranch: string
+    ontoBranch: string,
+    remote?: string
   ) => Promise<{
     success: boolean;
     result?: {
@@ -960,6 +961,8 @@ export interface WorktreeAPI {
       baseBranch?: string;
       draft?: boolean;
       remote?: string;
+      /** Remote to create the PR against (e.g. upstream). If not specified, inferred from repo setup. */
+      targetRemote?: string;
     }
   ) => Promise<{
     success: boolean;
@@ -1064,7 +1067,8 @@ export interface WorktreeAPI {
   // List branches (local and optionally remote)
   listBranches: (
     worktreePath: string,
-    includeRemote?: boolean
+    includeRemote?: boolean,
+    signal?: AbortSignal
   ) => Promise<{
     success: boolean;
     result?: {
@@ -1078,6 +1082,8 @@ export interface WorktreeAPI {
       behindCount: number;
       hasRemoteBranch: boolean;
       hasAnyRemotes: boolean;
+      /** The name of the remote that the current branch is tracking (e.g. "origin"), if any */
+      trackingRemote?: string;
     };
     error?: string;
     code?: 'NOT_GIT_REPO' | 'NO_COMMITS'; // Error codes for git status issues

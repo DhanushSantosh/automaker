@@ -59,6 +59,7 @@ import {
   applyStickyModifier,
   type StickyModifier,
 } from './sticky-modifier-keys';
+import { TerminalScriptsDropdown } from './terminal-scripts-dropdown';
 
 const logger = createLogger('Terminal');
 const NO_STORE_CACHE_MODE: RequestCache = 'no-store';
@@ -156,6 +157,11 @@ export function TerminalPanel({
   const [isImageDragOver, setIsImageDragOver] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const hasRunInitialCommandRef = useRef(false);
+  // Tracks whether the connected shell is a Windows shell (PowerShell, cmd, etc.).
+  // Maintained as a ref (not state) so sendCommand can read the current value without
+  // causing unnecessary re-renders or stale closure issues. Set inside ws.onmessage
+  // when the 'connected' message is received (see isWindowsShell detection below).
+  const isWindowsShellRef = useRef(false);
   const searchAddonRef = useRef<XSearchAddon | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -373,6 +379,17 @@ export function TerminalPanel({
   const sendTerminalInput = useCallback((data: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'input', data }));
+    }
+  }, []);
+
+  // Send a command to the terminal (types the command and presses Enter).
+  // Uses isWindowsShellRef.current to pick the correct line ending:
+  // Windows shells (PowerShell, cmd) expect '\r\n'; Unix/macOS shells expect '\n'.
+  // isWindowsShellRef is set in ws.onmessage when the 'connected' message arrives.
+  const sendCommand = useCallback((command: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const lineEnding = isWindowsShellRef.current ? '\r\n' : '\n';
+      wsRef.current.send(JSON.stringify({ type: 'input', data: command + lineEnding }));
     }
   }, []);
 
@@ -1090,6 +1107,9 @@ export function TerminalPanel({
                 shellPath.includes('powershell') ||
                 shellPath.includes('pwsh') ||
                 shellPath.includes('cmd.exe');
+              // Keep the component-level ref in sync so sendCommand and
+              // runCommandOnConnect both use the correct line ending ('\r\n' vs '\n').
+              isWindowsShellRef.current = isWindowsShell;
               const isPowerShell = shellPath.includes('powershell') || shellPath.includes('pwsh');
 
               if (msg.shell) {
@@ -1902,6 +1922,12 @@ export function TerminalPanel({
           >
             <ZoomIn className="h-3 w-3" />
           </Button>
+
+          {/* Quick scripts dropdown */}
+          <TerminalScriptsDropdown
+            onRunCommand={sendCommand}
+            isConnected={connectionStatus === 'connected'}
+          />
 
           {/* Settings popover */}
           <Popover>

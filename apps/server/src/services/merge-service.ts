@@ -4,7 +4,7 @@
  * Extracted from worktree merge route to allow internal service calls.
  */
 
-import { createLogger, isValidBranchName } from '@automaker/utils';
+import { createLogger, isValidBranchName, isValidRemoteName } from '@automaker/utils';
 import { type EventEmitter } from '../lib/events.js';
 import { execGitCommand } from '@automaker/git-utils';
 const logger = createLogger('MergeService');
@@ -13,6 +13,8 @@ export interface MergeOptions {
   squash?: boolean;
   message?: string;
   deleteWorktreeAndBranch?: boolean;
+  /** Remote name to fetch from before merging (defaults to 'origin') */
+  remote?: string;
 }
 
 export interface MergeServiceResult {
@@ -35,7 +37,11 @@ export interface MergeServiceResult {
  * @param branchName - Source branch to merge
  * @param worktreePath - Path to the worktree (used for deletion if requested)
  * @param targetBranch - Branch to merge into (defaults to 'main')
- * @param options - Merge options (squash, message, deleteWorktreeAndBranch)
+ * @param options - Merge options
+ * @param options.squash - If true, perform a squash merge
+ * @param options.message - Custom merge commit message
+ * @param options.deleteWorktreeAndBranch - If true, delete worktree and branch after merge
+ * @param options.remote - Remote name to fetch from before merging (defaults to 'origin')
  */
 export async function performMerge(
   projectPath: string,
@@ -86,6 +92,33 @@ export async function performMerge(
       success: false,
       error: `Target branch "${mergeTo}" does not exist`,
     };
+  }
+
+  // Validate the remote name to prevent git option injection.
+  // Reject invalid remote names so the caller knows their input was wrong,
+  // consistent with how invalid branch names are handled above.
+  const remote = options?.remote || 'origin';
+  if (!isValidRemoteName(remote)) {
+    logger.warn('Invalid remote name supplied to merge-service', {
+      remote,
+      projectPath,
+    });
+    return {
+      success: false,
+      error: `Invalid remote name: "${remote}"`,
+    };
+  }
+
+  // Fetch latest from remote before merging to ensure we have up-to-date refs
+  try {
+    await execGitCommand(['fetch', remote], projectPath);
+  } catch (fetchError) {
+    logger.warn('Failed to fetch from remote before merge; proceeding with local refs', {
+      remote,
+      projectPath,
+      error: (fetchError as Error).message,
+    });
+    // Non-fatal: proceed with local refs if fetch fails (e.g. offline)
   }
 
   // Emit merge:start after validating inputs
