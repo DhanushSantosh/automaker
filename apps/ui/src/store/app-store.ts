@@ -298,6 +298,7 @@ const initialState: AppState = {
   enableDependencyBlocking: true,
   skipVerificationInAutoMode: false,
   enableAiCommitMessages: true,
+  mergePostAction: null,
   planUseSelectedWorktreeBranch: true,
   addFeatureUseSelectedWorktreeBranch: false,
   useWorktrees: true,
@@ -362,6 +363,8 @@ const initialState: AppState = {
   defaultPlanningMode: 'skip' as PlanningMode,
   defaultRequirePlanApproval: false,
   defaultFeatureModel: DEFAULT_GLOBAL_SETTINGS.defaultFeatureModel,
+  defaultThinkingLevel: DEFAULT_GLOBAL_SETTINGS.defaultThinkingLevel ?? 'none',
+  defaultReasoningEffort: DEFAULT_GLOBAL_SETTINGS.defaultReasoningEffort ?? 'none',
   pendingPlanApproval: null,
   claudeRefreshInterval: 60,
   claudeUsage: null,
@@ -1115,6 +1118,16 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       await httpApi.put('/api/settings', { enableAiCommitMessages: enabled });
     } catch (error) {
       logger.error('Failed to sync enableAiCommitMessages:', error);
+    }
+  },
+  setMergePostAction: async (action) => {
+    set({ mergePostAction: action });
+    // Sync to server
+    try {
+      const httpApi = getHttpApiClient();
+      await httpApi.put('/api/settings', { mergePostAction: action });
+    } catch (error) {
+      logger.error('Failed to sync mergePostAction:', error);
     }
   },
   setPlanUseSelectedWorktreeBranch: async (enabled) => {
@@ -2312,6 +2325,28 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   setDefaultPlanningMode: (mode) => set({ defaultPlanningMode: mode }),
   setDefaultRequirePlanApproval: (require) => set({ defaultRequirePlanApproval: require }),
   setDefaultFeatureModel: (entry) => set({ defaultFeatureModel: entry }),
+
+  setDefaultThinkingLevel: async (level) => {
+    set({ defaultThinkingLevel: level });
+    // Sync to server
+    try {
+      const httpApi = getHttpApiClient();
+      await httpApi.put('/api/settings', { defaultThinkingLevel: level });
+    } catch (error) {
+      logger.error('Failed to sync defaultThinkingLevel:', error);
+    }
+  },
+
+  setDefaultReasoningEffort: async (effort) => {
+    set({ defaultReasoningEffort: effort });
+    // Sync to server
+    try {
+      const httpApi = getHttpApiClient();
+      await httpApi.put('/api/settings', { defaultReasoningEffort: effort });
+    } catch (error) {
+      logger.error('Failed to sync defaultReasoningEffort:', error);
+    }
+  },
 
   // Plan Approval actions
   setPendingPlanApproval: (approval) => set({ pendingPlanApproval: approval }),

@@ -8,7 +8,7 @@ import type {
   ZaiUsageResponse,
   GeminiUsageResponse,
 } from '@/store/app-store';
-import type { ParsedTask, FeatureStatusWithPipeline } from '@automaker/types';
+import type { ParsedTask, FeatureStatusWithPipeline, MergeStateInfo } from '@automaker/types';
 
 export interface ImageAttachment {
   id?: string; // Optional - may not be present in messages loaded from server
@@ -759,6 +759,10 @@ export interface FileStatus {
   indexStatus?: string;
   /** Raw working tree status character from git porcelain format */
   workTreeStatus?: string;
+  /** Whether this file is involved in a merge operation */
+  isMergeAffected?: boolean;
+  /** Type of merge involvement (e.g. 'both-modified', 'added-by-us', etc.) */
+  mergeType?: string;
 }
 
 export interface FileDiffsResult {
@@ -767,6 +771,8 @@ export interface FileDiffsResult {
   files?: FileStatus[];
   hasChanges?: boolean;
   error?: string;
+  /** Merge state info, present when a merge/rebase/cherry-pick is in progress */
+  mergeState?: MergeStateInfo;
 }
 
 export interface FileDiffResult {
@@ -1286,6 +1292,7 @@ export interface WorktreeAPI {
         worktreePath: string;
         port: number;
         url: string;
+        urlDetected: boolean;
       }>;
     };
     error?: string;
@@ -1304,7 +1311,7 @@ export interface WorktreeAPI {
     error?: string;
   }>;
 
-  // Subscribe to dev server log events (started, output, stopped)
+  // Subscribe to dev server log events (started, output, stopped, url-detected)
   onDevServerLogEvent: (
     callback: (
       event:
@@ -1323,6 +1330,15 @@ export interface WorktreeAPI {
               port: number;
               exitCode: number | null;
               error?: string;
+              timestamp: string;
+            };
+          }
+        | {
+            type: 'dev-server:url-detected';
+            payload: {
+              worktreePath: string;
+              url: string;
+              port: number;
               timestamp: string;
             };
           }

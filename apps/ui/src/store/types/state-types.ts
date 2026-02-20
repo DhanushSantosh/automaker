@@ -21,6 +21,8 @@ import type {
   ClaudeApiProfile,
   ClaudeCompatibleProvider,
   SidebarStyle,
+  ThinkingLevel,
+  ReasoningEffort,
 } from '@automaker/types';
 
 import type {
@@ -127,6 +129,7 @@ export interface AppState {
   enableDependencyBlocking: boolean; // When true, show blocked badges and warnings for features with incomplete dependencies (default: true)
   skipVerificationInAutoMode: boolean; // When true, auto-mode grabs features even if dependencies are not verified (only checks they're not running)
   enableAiCommitMessages: boolean; // When true, auto-generate commit messages using AI when opening commit dialog
+  mergePostAction: 'commit' | 'manual' | null; // User's preferred action after a clean merge (null = ask every time)
   planUseSelectedWorktreeBranch: boolean; // When true, Plan dialog creates features on the currently selected worktree branch
   addFeatureUseSelectedWorktreeBranch: boolean; // When true, Add Feature dialog defaults to custom mode with selected worktree branch
 
@@ -174,6 +177,10 @@ export interface AppState {
   // Phase Model Settings - per-phase AI model configuration
   phaseModels: PhaseModelConfig;
   favoriteModels: string[];
+
+  // Default thinking/reasoning levels for two-stage model selector primary button
+  defaultThinkingLevel: ThinkingLevel;
+  defaultReasoningEffort: ReasoningEffort;
 
   // Cursor CLI Settings (global)
   enabledCursorModels: CursorModelId[]; // Which Cursor models are available in feature modal
@@ -488,6 +495,7 @@ export interface AppActions {
   setEnableDependencyBlocking: (enabled: boolean) => void;
   setSkipVerificationInAutoMode: (enabled: boolean) => Promise<void>;
   setEnableAiCommitMessages: (enabled: boolean) => Promise<void>;
+  setMergePostAction: (action: 'commit' | 'manual' | null) => Promise<void>;
   setPlanUseSelectedWorktreeBranch: (enabled: boolean) => Promise<void>;
   setAddFeatureUseSelectedWorktreeBranch: (enabled: boolean) => Promise<void>;
 
@@ -548,6 +556,8 @@ export interface AppActions {
   setPhaseModels: (models: Partial<PhaseModelConfig>) => Promise<void>;
   resetPhaseModels: () => Promise<void>;
   toggleFavoriteModel: (modelId: string) => void;
+  setDefaultThinkingLevel: (level: ThinkingLevel) => void;
+  setDefaultReasoningEffort: (effort: ReasoningEffort) => void;
 
   // Cursor CLI Settings actions
   setEnabledCursorModels: (models: CursorModelId[]) => void;

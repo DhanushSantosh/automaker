@@ -200,6 +200,7 @@ export {
   getThinkingTokenBudget,
   isAdaptiveThinkingModel,
   getThinkingLevelsForModel,
+  getDefaultThinkingLevel,
   // Event hook constants
   EVENT_HOOK_TRIGGER_LABELS,
   // Claude-compatible provider templates (new)
@@ -359,6 +360,7 @@ export type {
   AddRemoteResult,
   AddRemoteResponse,
   AddRemoteErrorResponse,
+  MergeStateInfo,
 } from './worktree.js';
 export { PR_STATES, validatePRState } from './worktree.js';
 

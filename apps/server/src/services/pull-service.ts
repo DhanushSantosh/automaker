@@ -46,6 +46,12 @@ export interface PullResult {
   conflictSource?: 'pull' | 'stash';
   conflictFiles?: string[];
   message?: string;
+  /** Whether the pull resulted in a merge commit (not fast-forward) */
+  isMerge?: boolean;
+  /** Whether the pull was a fast-forward (no merge commit needed) */
+  isFastForward?: boolean;
+  /** Files affected by the merge (only present when isMerge is true) */
+  mergeAffectedFiles?: string[];
 }
 
 // ============================================================================
@@ -179,6 +185,31 @@ function isConflictError(errorOutput: string): boolean {
 }
 
 /**
+ * Determine whether the current HEAD commit is a merge commit by checking
+ * whether it has two or more parent hashes.
+ *
+ * Runs `git show -s --pretty=%P HEAD` which prints the parent SHAs separated
+ * by spaces.  A merge commit has at least two parents; a regular commit has one.
+ *
+ * @param worktreePath - Path to the git worktree
+ * @returns true if HEAD is a merge commit, false otherwise
+ */
+async function isMergeCommit(worktreePath: string): Promise<boolean> {
+  try {
+    const output = await execGitCommand(['show', '-s', '--pretty=%P', 'HEAD'], worktreePath);
+    // Each parent SHA is separated by a space; two or more means it's a merge
+    const parents = output
+      .trim()
+      .split(/\s+/)
+      .filter((p) => p.length > 0);
+    return parents.length >= 2;
+  } catch {
+    // If the check fails for any reason, assume it is not a merge commit
+    return false;
+  }
+}
+
+/**
  * Check whether an output string indicates a stash conflict.
  */
 function isStashConflict(output: string): boolean {
@@ -302,10 +333,39 @@ export async function performPull(
   const pullArgs = upstreamStatus === 'tracking' ? ['pull'] : ['pull', targetRemote, branchName];
   let pullConflict = false;
   let pullConflictFiles: string[] = [];
+
+  // Declare merge detection variables before the try block so they are accessible
+  // in the stash reapplication path even when didStash is true.
+  let isMerge = false;
+  let isFastForward = false;
+  let mergeAffectedFiles: string[] = [];
+
   try {
     const pullOutput = await execGitCommand(pullArgs, worktreePath);
 
     const alreadyUpToDate = pullOutput.includes('Already up to date');
+    // Detect fast-forward from git pull output
+    isFastForward = pullOutput.includes('Fast-forward') || pullOutput.includes('fast-forward');
+    // Detect merge by checking whether the new HEAD has two parents (more reliable
+    // than string-matching localised pull output which may not contain 'Merge').
+    isMerge = !alreadyUpToDate && !isFastForward ? await isMergeCommit(worktreePath) : false;
+
+    // If it was a real merge (not fast-forward), get the affected files
+    if (isMerge) {
+      try {
+        // Get files changed in the merge commit
+        const diffOutput = await execGitCommand(
+          ['diff', '--name-only', 'HEAD~1', 'HEAD'],
+          worktreePath
+        );
+        mergeAffectedFiles = diffOutput
+          .trim()
+          .split('\n')
+          .filter((f: string) => f.trim().length > 0);
+      } catch {
+        // Ignore errors - this is best-effort
+      }
+    }
 
     // If no stash to reapply, return success
     if (!didStash) {
@@ -317,6 +377,8 @@ export async function performPull(
         stashed: false,
         stashRestored: false,
         message: alreadyUpToDate ? 'Already up to date' : 'Pulled latest changes',
+        ...(isMerge ? { isMerge: true, mergeAffectedFiles } : {}),
+        ...(isFastForward ? { isFastForward: true } : {}),
       };
     }
   } catch (pullError: unknown) {
@@ -374,7 +436,11 @@ export async function performPull(
 
   // 10. Pull succeeded, now try to reapply stash
   if (didStash) {
-    return await reapplyStash(worktreePath, branchName);
+    return await reapplyStash(worktreePath, branchName, {
+      isMerge,
+      isFastForward,
+      mergeAffectedFiles,
+    });
   }
 
   // Shouldn't reach here, but return a safe default
@@ -392,9 +458,21 @@ export async function performPull(
  *
  * @param worktreePath - Path to the git worktree
  * @param branchName - Current branch name
+ * @param mergeInfo - Merge/fast-forward detection info from the pull step
  * @returns PullResult reflecting stash reapplication status
  */
-async function reapplyStash(worktreePath: string, branchName: string): Promise<PullResult> {
+async function reapplyStash(
+  worktreePath: string,
+  branchName: string,
+  mergeInfo: { isMerge: boolean; isFastForward: boolean; mergeAffectedFiles: string[] }
+): Promise<PullResult> {
+  const mergeFields: Partial<PullResult> = {
+    ...(mergeInfo.isMerge
+      ? { isMerge: true, mergeAffectedFiles: mergeInfo.mergeAffectedFiles }
+      : {}),
+    ...(mergeInfo.isFastForward ? { isFastForward: true } : {}),
+  };
+
   try {
     await popStash(worktreePath);
 
@@ -406,6 +484,7 @@ async function reapplyStash(worktreePath: string, branchName: string): Promise<P
       hasConflicts: false,
       stashed: true,
       stashRestored: true,
+      ...mergeFields,
       message: 'Pulled latest changes and restored your stashed changes.',
     };
   } catch (stashPopError: unknown) {
@@ -431,6 +510,7 @@ async function reapplyStash(worktreePath: string, branchName: string): Promise<P
         conflictFiles: stashConflictFiles,
         stashed: true,
         stashRestored: false,
+        ...mergeFields,
         message: 'Pull succeeded but reapplying your stashed changes resulted in merge conflicts.',
       };
     }
@@ -445,6 +525,7 @@ async function reapplyStash(worktreePath: string, branchName: string): Promise<P
       hasConflicts: false,
       stashed: true,
       stashRestored: false,
+      ...mergeFields,
       message:
         'Pull succeeded but failed to reapply stashed changes. Your changes are still in the stash list.',
     };

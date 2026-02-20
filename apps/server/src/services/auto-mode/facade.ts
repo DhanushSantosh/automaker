@@ -334,6 +334,23 @@ export class AutoModeServiceFacade {
       async (pPath) => featureLoader.getAll(pPath)
     );
 
+    /**
+     * Iterate all active worktrees for this project, falling back to the
+     * main worktree (null) when none are active.
+     */
+    const forEachProjectWorktree = (fn: (branchName: string | null) => void): void => {
+      const projectWorktrees = autoLoopCoordinator
+        .getActiveWorktrees()
+        .filter((w) => w.projectPath === projectPath);
+      if (projectWorktrees.length === 0) {
+        fn(null);
+      } else {
+        for (const w of projectWorktrees) {
+          fn(w.branchName);
+        }
+      }
+    };
+
     // ExecutionService - runAgentFn delegates to AgentExecutor via shared helper
     const executionService = new ExecutionService(
       eventBus,
@@ -357,11 +374,36 @@ export class AutoModeServiceFacade {
       (pPath, featureId) => getFacade().contextExists(featureId),
       (pPath, featureId, useWorktrees, _calledInternally) =>
         getFacade().resumeFeature(featureId, useWorktrees, _calledInternally),
-      (errorInfo) =>
-        autoLoopCoordinator.trackFailureAndCheckPauseForProject(projectPath, null, errorInfo),
-      (errorInfo) => autoLoopCoordinator.signalShouldPauseForProject(projectPath, null, errorInfo),
+      (errorInfo) => {
+        // Track failure against ALL active worktrees for this project.
+        // The ExecutionService callbacks don't receive branchName, so we
+        // iterate all active worktrees. Uses a for-of loop (not .some()) to
+        // ensure every worktree's failure counter is incremented.
+        let shouldPause = false;
+        forEachProjectWorktree((branchName) => {
+          if (
+            autoLoopCoordinator.trackFailureAndCheckPauseForProject(
+              projectPath,
+              branchName,
+              errorInfo
+            )
+          ) {
+            shouldPause = true;
+          }
+        });
+        return shouldPause;
+      },
+      (errorInfo) => {
+        forEachProjectWorktree((branchName) =>
+          autoLoopCoordinator.signalShouldPauseForProject(projectPath, branchName, errorInfo)
+        );
+      },
       () => {
-        /* recordSuccess - no-op */
+        // Record success to clear failure tracking. This prevents failures
+        // from accumulating over time and incorrectly pausing auto mode.
+        forEachProjectWorktree((branchName) =>
+          autoLoopCoordinator.recordSuccessForProject(projectPath, branchName)
+        );
       },
       (_pPath) => getFacade().saveExecutionState(),
       loadContextFiles

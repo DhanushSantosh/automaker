@@ -163,6 +163,10 @@ export class AutoLoopCoordinator {
     const { projectPath, branchName } = projectState.config;
     while (projectState.isRunning && !projectState.abortController.signal.aborted) {
       try {
+        // Count ALL running features (both auto and manual) against the concurrency limit.
+        // This ensures auto mode is aware of the total system load and does not over-subscribe
+        // resources. Manual tasks always bypass the limit and run immediately, but their
+        // presence is accounted for when deciding whether to dispatch new auto-mode tasks.
         const runningCount = await this.getRunningCountForWorktree(projectPath, branchName);
         if (runningCount >= projectState.config.maxConcurrency) {
           await this.sleep(5000, projectState.abortController.signal);
@@ -298,11 +302,17 @@ export class AutoLoopCoordinator {
     return Array.from(activeProjects);
   }
 
+  /**
+   * Get the number of running features for a worktree.
+   * By default counts ALL running features (both auto-mode and manual).
+   * Pass `autoModeOnly: true` to count only auto-mode features.
+   */
   async getRunningCountForWorktree(
     projectPath: string,
-    branchName: string | null
+    branchName: string | null,
+    options?: { autoModeOnly?: boolean }
   ): Promise<number> {
-    return this.concurrencyManager.getRunningCountForWorktree(projectPath, branchName);
+    return this.concurrencyManager.getRunningCountForWorktree(projectPath, branchName, options);
   }
 
   trackFailureAndCheckPauseForProject(
