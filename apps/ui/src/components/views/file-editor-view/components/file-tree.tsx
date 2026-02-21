@@ -32,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useFileEditorStore, type FileTreeNode } from '../use-file-editor-store';
+import { useFileBrowser } from '@/contexts/file-browser-context';
 
 interface FileTreeProps {
   onFileSelect: (path: string) => void;
@@ -104,6 +105,21 @@ function getGitStatusLabel(status: string | undefined): string {
   }
 }
 
+/**
+ * Validate a file/folder name for safety.
+ * Rejects names containing path separators, relative path components,
+ * or names that are just dots (which resolve to parent/current directory).
+ */
+function isValidFileName(name: string): boolean {
+  // Reject names containing path separators
+  if (name.includes('/') || name.includes('\\')) return false;
+  // Reject current/parent directory references
+  if (name === '.' || name === '..') return false;
+  // Reject empty or whitespace-only names
+  if (!name.trim()) return false;
+  return true;
+}
+
 /** Inline input for creating/renaming items */
 function InlineInput({
   defaultValue,
@@ -117,6 +133,7 @@ function InlineInput({
   placeholder?: string;
 }) {
   const [value, setValue] = useState(defaultValue || '');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // Guard against double-submission: pressing Enter triggers onKeyDown AND may
   // immediately trigger onBlur (e.g. when the component unmounts after submit).
@@ -125,7 +142,9 @@ function InlineInput({
   useEffect(() => {
     inputRef.current?.focus();
     if (defaultValue) {
-      // Select name without extension for rename
+      // Select name without extension for rename.
+      // For dotfiles (e.g. ".gitignore"), lastIndexOf('.') returns 0,
+      // so we fall through to select() which selects the entire name.
       const dotIndex = defaultValue.lastIndexOf('.');
       if (dotIndex > 0) {
         inputRef.current?.setSelectionRange(0, dotIndex);
@@ -135,97 +154,62 @@ function InlineInput({
     }
   }, [defaultValue]);
 
+  const handleSubmit = useCallback(() => {
+    if (submittedRef.current) return;
+    const trimmed = value.trim();
+    if (!trimmed) {
+      onCancel();
+      return;
+    }
+    if (!isValidFileName(trimmed)) {
+      // Invalid name — surface error, keep editing so the user can fix it
+      setErrorMessage('Invalid name: avoid /, \\, ".", or ".."');
+      inputRef.current?.focus();
+      return;
+    }
+    setErrorMessage(null);
+    submittedRef.current = true;
+    onSubmit(trimmed);
+  }, [value, onSubmit, onCancel]);
+
   return (
-    <input
-      ref={inputRef}
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' && value.trim()) {
+    <div className="flex flex-col gap-0.5">
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => {
+          setValue(e.target.value);
+          if (errorMessage) setErrorMessage(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            handleSubmit();
+          } else if (e.key === 'Escape') {
+            onCancel();
+          }
+        }}
+        onBlur={() => {
+          // Prevent duplicate submission if onKeyDown already triggered onSubmit
           if (submittedRef.current) return;
-          submittedRef.current = true;
-          onSubmit(value.trim());
-        } else if (e.key === 'Escape') {
-          onCancel();
-        }
-      }}
-      onBlur={() => {
-        // Prevent duplicate submission if onKeyDown already triggered onSubmit
-        if (submittedRef.current) return;
-        if (value.trim()) {
-          submittedRef.current = true;
-          onSubmit(value.trim());
-        } else {
-          onCancel();
-        }
-      }}
-      placeholder={placeholder}
-      className="text-sm bg-muted border border-border rounded px-1 py-0.5 w-full outline-none focus:border-primary"
-    />
-  );
-}
-
-/** Destination path picker dialog for copy/move operations */
-function DestinationPicker({
-  onSubmit,
-  onCancel,
-  defaultPath,
-  action,
-}: {
-  onSubmit: (path: string) => void;
-  onCancel: () => void;
-  defaultPath: string;
-  action: 'Copy' | 'Move';
-}) {
-  const [path, setPath] = useState(defaultPath);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, []);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-background border border-border rounded-lg shadow-lg w-full max-w-md">
-        <div className="px-4 py-3 border-b border-border">
-          <h3 className="text-sm font-medium">{action} To...</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Enter the destination path for the {action.toLowerCase()} operation
-          </p>
-        </div>
-        <div className="px-4 py-3">
-          <input
-            ref={inputRef}
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && path.trim()) {
-                onSubmit(path.trim());
-              } else if (e.key === 'Escape') {
-                onCancel();
-              }
-            }}
-            placeholder="Enter destination path..."
-            className="w-full text-sm bg-muted border border-border rounded px-3 py-2 outline-none focus:border-primary font-mono"
-          />
-        </div>
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
-          <button
-            onClick={onCancel}
-            className="px-3 py-1.5 text-sm rounded hover:bg-muted transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => path.trim() && onSubmit(path.trim())}
-            disabled={!path.trim()}
-            className="px-3 py-1.5 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
-            {action}
-          </button>
-        </div>
-      </div>
+          const trimmed = value.trim();
+          if (trimmed && isValidFileName(trimmed)) {
+            submittedRef.current = true;
+            onSubmit(trimmed);
+          }
+          // If the name is empty or invalid, do NOT call onCancel — keep the
+          // input open so the user can correct the value (mirrors handleSubmit).
+          // Optionally re-focus so the user can continue editing.
+          else {
+            inputRef.current?.focus();
+          }
+        }}
+        placeholder={placeholder}
+        className={cn(
+          'text-sm bg-muted border rounded px-1 py-0.5 w-full outline-none focus:border-primary',
+          errorMessage ? 'border-red-500' : 'border-border'
+        )}
+      />
+      {errorMessage && <span className="text-[10px] text-red-500 px-0.5">{errorMessage}</span>}
     </div>
   );
 }
@@ -276,12 +260,11 @@ function TreeNode({
     selectedPaths,
     toggleSelectedPath,
   } = useFileEditorStore();
+  const { openFileBrowser } = useFileBrowser();
   const [isCreatingFile, setIsCreatingFile] = useState(false);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [showCopyPicker, setShowCopyPicker] = useState(false);
-  const [showMovePicker, setShowMovePicker] = useState(false);
 
   const isExpanded = expandedFolders.has(node.path);
   const isActive = activeFilePath === node.path;
@@ -409,30 +392,6 @@ function TreeNode({
 
   return (
     <div key={node.path}>
-      {/* Destination picker dialogs */}
-      {showCopyPicker && onCopyItem && (
-        <DestinationPicker
-          action="Copy"
-          defaultPath={node.path}
-          onSubmit={async (destPath) => {
-            setShowCopyPicker(false);
-            await onCopyItem(node.path, destPath);
-          }}
-          onCancel={() => setShowCopyPicker(false)}
-        />
-      )}
-      {showMovePicker && onMoveItem && (
-        <DestinationPicker
-          action="Move"
-          defaultPath={node.path}
-          onSubmit={async (destPath) => {
-            setShowMovePicker(false);
-            await onMoveItem(node.path, destPath);
-          }}
-          onCancel={() => setShowMovePicker(false)}
-        />
-      )}
-
       {isRenaming ? (
         <div style={{ paddingLeft: `${depth * 16 + 8}px` }} className="py-0.5 px-2">
           <InlineInput
@@ -630,9 +589,21 @@ function TreeNode({
               {/* Copy To... */}
               {onCopyItem && (
                 <DropdownMenuItem
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.stopPropagation();
-                    setShowCopyPicker(true);
+                    try {
+                      const parentPath = node.path.substring(0, node.path.lastIndexOf('/')) || '/';
+                      const destPath = await openFileBrowser({
+                        title: `Copy "${node.name}" To...`,
+                        description: 'Select the destination folder for the copy operation',
+                        initialPath: parentPath,
+                      });
+                      if (destPath) {
+                        await onCopyItem(node.path, destPath);
+                      }
+                    } catch (err) {
+                      console.error('Copy operation failed:', err);
+                    }
                   }}
                   className="gap-2"
                 >
@@ -644,9 +615,21 @@ function TreeNode({
               {/* Move To... */}
               {onMoveItem && (
                 <DropdownMenuItem
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.stopPropagation();
-                    setShowMovePicker(true);
+                    try {
+                      const parentPath = node.path.substring(0, node.path.lastIndexOf('/')) || '/';
+                      const destPath = await openFileBrowser({
+                        title: `Move "${node.name}" To...`,
+                        description: 'Select the destination folder for the move operation',
+                        initialPath: parentPath,
+                      });
+                      if (destPath) {
+                        await onMoveItem(node.path, destPath);
+                      }
+                    } catch (err) {
+                      console.error('Move operation failed:', err);
+                    }
                   }}
                   className="gap-2"
                 >
@@ -775,8 +758,15 @@ export function FileTree({
   onDragDropMove,
   effectivePath,
 }: FileTreeProps) {
-  const { fileTree, showHiddenFiles, setShowHiddenFiles, gitStatusMap, setDragState, gitBranch } =
-    useFileEditorStore();
+  const {
+    fileTree,
+    showHiddenFiles,
+    setShowHiddenFiles,
+    gitStatusMap,
+    dragState,
+    setDragState,
+    gitBranch,
+  } = useFileEditorStore();
   const [isCreatingFile, setIsCreatingFile] = useState(false);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
 
@@ -791,10 +781,13 @@ export function FileTree({
       e.preventDefault();
       if (effectivePath) {
         e.dataTransfer.dropEffect = 'move';
-        setDragState({ draggedPaths: [], dropTargetPath: effectivePath });
+        // Skip redundant state update if already targeting the same path
+        if (dragState.dropTargetPath !== effectivePath) {
+          setDragState({ ...dragState, dropTargetPath: effectivePath });
+        }
       }
     },
-    [effectivePath, setDragState]
+    [effectivePath, dragState, setDragState]
   );
 
   const handleRootDrop = useCallback(
@@ -818,47 +811,54 @@ export function FileTree({
   return (
     <div className="flex flex-col h-full" data-testid="file-tree">
       {/* Tree toolbar */}
-      <div className="flex items-center justify-between px-2 py-1.5 border-b border-border">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Explorer
-          </span>
-          {gitBranch && (
-            <span className="text-[10px] text-primary font-medium px-1 py-0.5 bg-primary/10 rounded">
+      <div className="px-2 py-1.5 border-b border-border">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Explorer
+            </span>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => setIsCreatingFile(true)}
+              className="p-1 hover:bg-accent rounded"
+              title="New file"
+            >
+              <FilePlus className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+            <button
+              onClick={() => setIsCreatingFolder(true)}
+              className="p-1 hover:bg-accent rounded"
+              title="New folder"
+            >
+              <FolderPlus className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+            <button
+              onClick={() => setShowHiddenFiles(!showHiddenFiles)}
+              className="p-1 hover:bg-accent rounded"
+              title={showHiddenFiles ? 'Hide dotfiles' : 'Show dotfiles'}
+            >
+              {showHiddenFiles ? (
+                <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+              ) : (
+                <EyeOff className="w-3.5 h-3.5 text-muted-foreground" />
+              )}
+            </button>
+            <button onClick={onRefresh} className="p-1 hover:bg-accent rounded" title="Refresh">
+              <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+          </div>
+        </div>
+        {gitBranch && (
+          <div className="mt-1 min-w-0">
+            <span
+              className="inline-block max-w-full truncate whitespace-nowrap text-[10px] text-primary font-medium px-1 py-0.5 bg-primary/10 rounded"
+              title={gitBranch}
+            >
               {gitBranch}
             </span>
-          )}
-        </div>
-        <div className="flex items-center gap-0.5">
-          <button
-            onClick={() => setIsCreatingFile(true)}
-            className="p-1 hover:bg-accent rounded"
-            title="New file"
-          >
-            <FilePlus className="w-3.5 h-3.5 text-muted-foreground" />
-          </button>
-          <button
-            onClick={() => setIsCreatingFolder(true)}
-            className="p-1 hover:bg-accent rounded"
-            title="New folder"
-          >
-            <FolderPlus className="w-3.5 h-3.5 text-muted-foreground" />
-          </button>
-          <button
-            onClick={() => setShowHiddenFiles(!showHiddenFiles)}
-            className="p-1 hover:bg-accent rounded"
-            title={showHiddenFiles ? 'Hide dotfiles' : 'Show dotfiles'}
-          >
-            {showHiddenFiles ? (
-              <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-            ) : (
-              <EyeOff className="w-3.5 h-3.5 text-muted-foreground" />
-            )}
-          </button>
-          <button onClick={onRefresh} className="p-1 hover:bg-accent rounded" title="Refresh">
-            <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
-          </button>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Tree content */}

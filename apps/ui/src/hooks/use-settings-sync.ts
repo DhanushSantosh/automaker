@@ -100,6 +100,7 @@ const SETTINGS_FIELDS_TO_SYNC = [
   'projectHistory',
   'projectHistoryIndex',
   'lastSelectedSessionByProject',
+  'currentWorktreeByProject',
   // Codex CLI Settings
   'codexAutoLoadAgents',
   'codexSandboxMode',
@@ -768,6 +769,8 @@ export async function refreshSettingsFromServer(): Promise<boolean> {
       projectHistory: serverSettings.projectHistory,
       projectHistoryIndex: serverSettings.projectHistoryIndex,
       lastSelectedSessionByProject: serverSettings.lastSelectedSessionByProject,
+      currentWorktreeByProject:
+        serverSettings.currentWorktreeByProject ?? currentAppState.currentWorktreeByProject,
       // UI State (previously in localStorage)
       worktreePanelCollapsed: serverSettings.worktreePanelCollapsed ?? false,
       lastProjectDir: serverSettings.lastProjectDir ?? '',

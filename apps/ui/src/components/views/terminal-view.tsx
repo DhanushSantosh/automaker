@@ -240,9 +240,17 @@ interface TerminalViewProps {
   initialMode?: 'tab' | 'split';
   /** Unique nonce to allow opening the same worktree multiple times */
   nonce?: number;
+  /** Command to run automatically when the terminal is created (e.g., from scripts submenu) */
+  initialCommand?: string;
 }
 
-export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: TerminalViewProps) {
+export function TerminalView({
+  initialCwd,
+  initialBranch,
+  initialMode,
+  nonce,
+  initialCommand,
+}: TerminalViewProps) {
   const {
     terminalState,
     setTerminalUnlocked,
@@ -288,6 +296,10 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
   const isCreatingRef = useRef<boolean>(false);
   const restoringProjectPathRef = useRef<string | null>(null);
   const [newSessionIds, setNewSessionIds] = useState<Set<string>>(new Set());
+  // Per-session command overrides (e.g., from scripts submenu), takes priority over defaultRunScript
+  const [sessionCommandOverrides, setSessionCommandOverrides] = useState<Map<string, string>>(
+    new Map()
+  );
   const [serverSessionInfo, setServerSessionInfo] = useState<{
     current: number;
     max: number;
@@ -576,7 +588,7 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
 
     // Skip if we've already handled this exact request (prevents duplicate terminals)
     // Include mode and nonce in the key to allow opening same cwd multiple times
-    const cwdKey = `${initialCwd}:${initialMode || 'default'}:${nonce || 0}`;
+    const cwdKey = `${initialCwd}:${initialMode || 'default'}:${nonce || 0}:${initialCommand || ''}`;
     if (initialCwdHandledRef.current === cwdKey) return;
 
     // Skip if terminal is not enabled or not unlocked
@@ -618,8 +630,12 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
           }
 
           // Mark this session as new for running initial command
-          if (defaultRunScript) {
+          if (initialCommand || defaultRunScript) {
             setNewSessionIds((prev) => new Set(prev).add(data.data.id));
+            // Store per-session command override if an explicit command was provided
+            if (initialCommand) {
+              setSessionCommandOverrides((prev) => new Map(prev).set(data.data.id, initialCommand));
+            }
           }
 
           // Show success toast with branch name if provided
@@ -654,6 +670,7 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
     initialCwd,
     initialBranch,
     initialMode,
+    initialCommand,
     nonce,
     status?.enabled,
     status?.passwordRequired,
@@ -1059,7 +1076,12 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
   // Create terminal in new tab
   // customCwd: optional working directory (e.g., a specific worktree path)
   // branchName: optional branch name to display in the terminal panel header
-  const createTerminalInNewTab = async (customCwd?: string, branchName?: string) => {
+  // command: optional command to run when the terminal connects (e.g., from scripts menu)
+  const createTerminalInNewTab = async (
+    customCwd?: string,
+    branchName?: string,
+    command?: string
+  ) => {
     if (!canCreateTerminal('[Terminal] Debounced terminal tab creation')) {
       return;
     }
@@ -1087,8 +1109,12 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
         const { addTerminalToTab } = useAppStore.getState();
         addTerminalToTab(data.data.id, tabId, undefined, worktreeBranch);
         // Mark this session as new for running initial command
-        if (defaultRunScript) {
+        if (command || defaultRunScript) {
           setNewSessionIds((prev) => new Set(prev).add(data.data.id));
+          // Store per-session command override if an explicit command was provided
+          if (command) {
+            setSessionCommandOverrides((prev) => new Map(prev).set(data.data.id, command));
+          }
         }
         // Refresh session count
         fetchServerSettings();
@@ -1136,6 +1162,18 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
       // Always remove from UI - even if server says 404 (session may have already exited)
       removeTerminalFromLayout(sessionId);
 
+      // Clean up stale entries for killed sessions
+      setSessionCommandOverrides((prev) => {
+        const next = new Map(prev);
+        next.delete(sessionId);
+        return next;
+      });
+      setNewSessionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
+
       if (!response.ok && response.status !== 404) {
         // Log non-404 errors but still proceed with UI cleanup
         const data = await response.json().catch(() => ({}));
@@ -1148,6 +1186,17 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
       logger.error('Kill session error:', err);
       // Still remove from UI on network error - better UX than leaving broken terminal
       removeTerminalFromLayout(sessionId);
+      // Clean up stale entries for killed sessions (same cleanup as try block)
+      setSessionCommandOverrides((prev) => {
+        const next = new Map(prev);
+        next.delete(sessionId);
+        return next;
+      });
+      setNewSessionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
     }
   };
 
@@ -1181,6 +1230,22 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
         }
       })
     );
+
+    // Clean up stale entries for all killed sessions in this tab
+    setSessionCommandOverrides((prev) => {
+      const next = new Map(prev);
+      for (const sessionId of sessionIds) {
+        next.delete(sessionId);
+      }
+      return next;
+    });
+    setNewSessionIds((prev) => {
+      const next = new Set(prev);
+      for (const sessionId of sessionIds) {
+        next.delete(sessionId);
+      }
+      return next;
+    });
 
     // Now remove the tab from state
     removeTerminalTab(tabId);
@@ -1252,6 +1317,12 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
   const handleCommandRan = useCallback((sessionId: string) => {
     setNewSessionIds((prev) => {
       const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
+    // Clean up any per-session command override
+    setSessionCommandOverrides((prev) => {
+      const next = new Map(prev);
       next.delete(sessionId);
       return next;
     });
@@ -1387,6 +1458,9 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
       const terminalFontSize = content.fontSize ?? terminalState.defaultFontSize;
       // Only run command on new sessions (not restored ones)
       const isNewSession = newSessionIds.has(content.sessionId);
+      // Per-session command override takes priority over defaultRunScript
+      const sessionCommand = sessionCommandOverrides.get(content.sessionId);
+      const runCommand = isNewSession ? sessionCommand || defaultRunScript : undefined;
       return (
         <TerminalErrorBoundary
           key={`boundary-${content.sessionId}`}
@@ -1413,6 +1487,10 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
               createTerminal('vertical', content.sessionId, cwd, branchName);
             }}
             onNewTab={createTerminalInNewTab}
+            onRunCommandInNewTab={(command: string) => {
+              const { cwd, branchName: branch } = getActiveSessionWorktreeInfo();
+              createTerminalInNewTab(cwd, branch, command);
+            }}
             onNavigateUp={() => navigateToTerminal('up')}
             onNavigateDown={() => navigateToTerminal('down')}
             onNavigateLeft={() => navigateToTerminal('left')}
@@ -1427,7 +1505,7 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
             isDropTarget={activeDragId !== null && activeDragId !== content.sessionId}
             fontSize={terminalFontSize}
             onFontSizeChange={(size) => setTerminalPanelFontSize(content.sessionId, size)}
-            runCommandOnConnect={isNewSession ? defaultRunScript : undefined}
+            runCommandOnConnect={runCommand}
             onCommandRan={() => handleCommandRan(content.sessionId)}
             isMaximized={terminalState.maximizedSessionId === content.sessionId}
             onToggleMaximize={() => toggleTerminalMaximized(content.sessionId)}
@@ -1971,6 +2049,10 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
                   createTerminal('vertical', terminalState.maximizedSessionId!, cwd, branchName);
                 }}
                 onNewTab={createTerminalInNewTab}
+                onRunCommandInNewTab={(command: string) => {
+                  const { cwd, branchName: branch } = getActiveSessionWorktreeInfo();
+                  createTerminalInNewTab(cwd, branch, command);
+                }}
                 onSessionInvalid={() => {
                   const sessionId = terminalState.maximizedSessionId!;
                   logger.info(`Maximized session ${sessionId} is invalid, removing from layout`);
@@ -1982,6 +2064,13 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
                 onFontSizeChange={(size) =>
                   setTerminalPanelFontSize(terminalState.maximizedSessionId!, size)
                 }
+                runCommandOnConnect={
+                  newSessionIds.has(terminalState.maximizedSessionId)
+                    ? sessionCommandOverrides.get(terminalState.maximizedSessionId) ||
+                      defaultRunScript
+                    : undefined
+                }
+                onCommandRan={() => handleCommandRan(terminalState.maximizedSessionId!)}
                 isMaximized={true}
                 onToggleMaximize={() => toggleTerminalMaximized(terminalState.maximizedSessionId!)}
               />
