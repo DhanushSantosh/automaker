@@ -63,6 +63,7 @@ import {
   PlanApprovalDialog,
   MergeRebaseDialog,
   QuickAddDialog,
+  ChangePRNumberDialog,
 } from './board-view/dialogs';
 import type { DependencyLinkType } from './board-view/dialogs';
 import { PipelineSettingsDialog } from './board-view/dialogs/pipeline-settings-dialog';
@@ -198,6 +199,7 @@ export function BoardView() {
   const [showDeleteWorktreeDialog, setShowDeleteWorktreeDialog] = useState(false);
   const [showCommitWorktreeDialog, setShowCommitWorktreeDialog] = useState(false);
   const [showCreatePRDialog, setShowCreatePRDialog] = useState(false);
+  const [showChangePRNumberDialog, setShowChangePRNumberDialog] = useState(false);
   const [showCreateBranchDialog, setShowCreateBranchDialog] = useState(false);
   const [showMergeRebaseDialog, setShowMergeRebaseDialog] = useState(false);
   const [showPRCommentDialog, setShowPRCommentDialog] = useState(false);
@@ -1030,7 +1032,8 @@ export function BoardView() {
         skipTests: defaultSkipTests,
         model: resolveModelString(modelEntry.model) as ModelAlias,
         thinkingLevel: (modelEntry.thinkingLevel as ThinkingLevel) || 'none',
-        branchName: addFeatureUseSelectedWorktreeBranch ? selectedWorktreeBranch : '',
+        reasoningEffort: modelEntry.reasoningEffort,
+        branchName: addFeatureUseSelectedWorktreeBranch ? selectedWorktreeBranch : undefined,
         priority: 2,
         planningMode: useAppStore.getState().defaultPlanningMode ?? 'skip',
         requirePlanApproval: useAppStore.getState().defaultRequirePlanApproval ?? false,
@@ -1064,7 +1067,8 @@ export function BoardView() {
         skipTests: defaultSkipTests,
         model: resolveModelString(modelEntry.model) as ModelAlias,
         thinkingLevel: (modelEntry.thinkingLevel as ThinkingLevel) || 'none',
-        branchName: addFeatureUseSelectedWorktreeBranch ? selectedWorktreeBranch : '',
+        reasoningEffort: modelEntry.reasoningEffort,
+        branchName: addFeatureUseSelectedWorktreeBranch ? selectedWorktreeBranch : undefined,
         priority: 2,
         planningMode: useAppStore.getState().defaultPlanningMode ?? 'skip',
         requirePlanApproval: useAppStore.getState().defaultRequirePlanApproval ?? false,
@@ -1691,6 +1695,10 @@ export function BoardView() {
                 setSelectedWorktreeForAction(worktree);
                 setShowCreatePRDialog(true);
               }}
+              onChangePRNumber={(worktree) => {
+                setSelectedWorktreeForAction(worktree);
+                setShowChangePRNumberDialog(true);
+              }}
               onCreateBranch={(worktree) => {
                 setSelectedWorktreeForAction(worktree);
                 setShowCreateBranchDialog(true);
@@ -2224,6 +2232,18 @@ export function BoardView() {
               featuresToUpdate.map((feature) => persistFeatureUpdate(feature.id, { prUrl }))
             ).catch((err) => logger.error('Error in handleMove:', err));
           }
+          setWorktreeRefreshKey((k) => k + 1);
+          setSelectedWorktreeForAction(null);
+        }}
+      />
+
+      {/* Change PR Number Dialog */}
+      <ChangePRNumberDialog
+        open={showChangePRNumberDialog}
+        onOpenChange={setShowChangePRNumberDialog}
+        worktree={selectedWorktreeForAction}
+        projectPath={currentProject?.path || null}
+        onChanged={() => {
           setWorktreeRefreshKey((k) => k + 1);
           setSelectedWorktreeForAction(null);
         }}

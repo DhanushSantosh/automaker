@@ -487,7 +487,19 @@ export class AgentService {
         Object.keys(customSubagents).length > 0;
 
       // Base tools that match the provider's default set
-      const baseTools = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'WebSearch', 'WebFetch'];
+      const baseTools = [
+        'Read',
+        'Write',
+        'Edit',
+        'MultiEdit',
+        'Glob',
+        'Grep',
+        'LS',
+        'Bash',
+        'WebSearch',
+        'WebFetch',
+        'TodoWrite',
+      ];
 
       if (allowedTools) {
         allowedTools = [...allowedTools]; // Create a copy to avoid mutating SDK options
@@ -572,6 +584,7 @@ export class AgentService {
       let currentAssistantMessage: Message | null = null;
       let responseText = '';
       const toolUses: Array<{ name: string; input: unknown }> = [];
+      const toolNamesById = new Map<string, string>();
 
       for await (const msg of stream) {
         // Capture SDK session ID from any message and persist it.
@@ -616,10 +629,49 @@ export class AgentService {
                   input: block.input,
                 };
                 toolUses.push(toolUse);
+                if (block.tool_use_id) {
+                  toolNamesById.set(block.tool_use_id, toolUse.name);
+                }
 
                 this.emitAgentEvent(sessionId, {
                   type: 'tool_use',
                   tool: toolUse,
+                });
+              } else if (block.type === 'tool_result') {
+                const toolUseId = block.tool_use_id;
+                const toolName = toolUseId ? toolNamesById.get(toolUseId) : undefined;
+
+                // Normalize block.content to a string for the emitted event
+                const rawContent: unknown = block.content;
+                let contentString: string;
+                if (typeof rawContent === 'string') {
+                  contentString = rawContent;
+                } else if (Array.isArray(rawContent)) {
+                  // Extract text from content blocks (TextBlock, ImageBlock, etc.)
+                  contentString = rawContent
+                    .map((part: { text?: string; type?: string }) => {
+                      if (typeof part === 'string') return part;
+                      if (part.text) return part.text;
+                      // For non-text blocks (e.g., images), represent as type indicator
+                      if (part.type) return `[${part.type}]`;
+                      return JSON.stringify(part);
+                    })
+                    .join('\n');
+                } else if (rawContent !== undefined && rawContent !== null) {
+                  contentString = JSON.stringify(rawContent);
+                } else {
+                  contentString = '';
+                }
+
+                this.emitAgentEvent(sessionId, {
+                  type: 'tool_result',
+                  tool: {
+                    name: toolName || 'unknown',
+                    input: {
+                      toolUseId,
+                      content: contentString,
+                    },
+                  },
                 });
               }
             }

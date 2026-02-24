@@ -43,6 +43,9 @@ import {
   XCircle,
   CheckCircle,
   Settings2,
+  ArrowLeftRight,
+  Check,
+  Hash,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -105,6 +108,7 @@ interface WorktreeActionsDropdownProps {
   onDiscardChanges: (worktree: WorktreeInfo) => void;
   onCommit: (worktree: WorktreeInfo) => void;
   onCreatePR: (worktree: WorktreeInfo) => void;
+  onChangePRNumber?: (worktree: WorktreeInfo) => void;
   onAddressPRComments: (worktree: WorktreeInfo, prInfo: PRInfo) => void;
   onAutoAddressPRComments: (worktree: WorktreeInfo, prInfo: PRInfo) => void;
   onResolveConflicts: (worktree: WorktreeInfo) => void;
@@ -149,6 +153,14 @@ interface WorktreeActionsDropdownProps {
   onSetTracking?: (worktree: WorktreeInfo, remote: string) => void;
   /** List of remote names that have a branch matching the current branch name */
   remotesWithBranch?: string[];
+  /** Available worktrees for swapping into this slot (non-main only) */
+  availableWorktreesForSwap?: WorktreeInfo[];
+  /** The slot index for this tab in the pinned list (0-based, excluding main) */
+  slotIndex?: number;
+  /** Callback when user swaps this slot to a different worktree */
+  onSwapWorktree?: (slotIndex: number, newBranch: string) => void;
+  /** List of currently pinned branch names (to show which are pinned in the swap dropdown) */
+  pinnedBranches?: string[];
 }
 
 /**
@@ -259,6 +271,7 @@ export function WorktreeActionsDropdown({
   onDiscardChanges,
   onCommit,
   onCreatePR,
+  onChangePRNumber,
   onAddressPRComments,
   onAutoAddressPRComments,
   onResolveConflicts,
@@ -287,6 +300,10 @@ export function WorktreeActionsDropdown({
   onSyncWithRemote,
   onSetTracking,
   remotesWithBranch,
+  availableWorktreesForSwap,
+  slotIndex,
+  onSwapWorktree,
+  pinnedBranches,
 }: WorktreeActionsDropdownProps) {
   // Get available editors for the "Open In" submenu
   const { editors } = useAvailableEditors();
@@ -1334,6 +1351,12 @@ export function WorktreeActionsDropdown({
                 <Zap className="w-3.5 h-3.5 mr-2" />
                 Address PR Comments
               </DropdownMenuItem>
+              {onChangePRNumber && (
+                <DropdownMenuItem onClick={() => onChangePRNumber(worktree)} className="text-xs">
+                  <Hash className="w-3.5 h-3.5 mr-2" />
+                  Change PR Number
+                </DropdownMenuItem>
+              )}
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         )}
@@ -1359,6 +1382,36 @@ export function WorktreeActionsDropdown({
             </DropdownMenuItem>
           </TooltipWrapper>
         )}
+        {/* Swap Worktree submenu - only shown for non-main slots when there are other worktrees to swap to */}
+        {!worktree.isMain &&
+          availableWorktreesForSwap &&
+          availableWorktreesForSwap.length > 1 &&
+          slotIndex !== undefined &&
+          onSwapWorktree && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="text-xs">
+                <ArrowLeftRight className="w-3.5 h-3.5 mr-2" />
+                Swap Worktree
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-64 max-h-80 overflow-y-auto">
+                {availableWorktreesForSwap
+                  .filter((wt) => wt.branch !== worktree.branch)
+                  .map((wt) => {
+                    const isPinned = pinnedBranches?.includes(wt.branch);
+                    return (
+                      <DropdownMenuItem
+                        key={wt.path}
+                        onSelect={() => onSwapWorktree(slotIndex, wt.branch)}
+                        className="flex items-center gap-2 cursor-pointer font-mono text-xs"
+                      >
+                        <span className="truncate flex-1">{wt.branch}</span>
+                        {isPinned && <Check className="w-3 h-3 shrink-0 text-muted-foreground" />}
+                      </DropdownMenuItem>
+                    );
+                  })}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
         {!worktree.isMain && (
           <DropdownMenuItem
             onClick={() => onDeleteWorktree(worktree)}

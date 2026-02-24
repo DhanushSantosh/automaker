@@ -188,6 +188,125 @@ describe('agent-service.ts', () => {
       expect(mockEvents.emit).toHaveBeenCalled();
     });
 
+    it('should emit tool_result events from provider stream', async () => {
+      const mockProvider = {
+        getName: () => 'gemini',
+        executeQuery: async function* () {
+          yield {
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              content: [
+                {
+                  type: 'tool_use',
+                  name: 'Read',
+                  tool_use_id: 'tool-1',
+                  input: { file_path: 'README.md' },
+                },
+              ],
+            },
+          };
+          yield {
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              content: [
+                {
+                  type: 'tool_result',
+                  tool_use_id: 'tool-1',
+                  content: 'File contents here',
+                },
+              ],
+            },
+          };
+          yield {
+            type: 'result',
+            subtype: 'success',
+          };
+        },
+      };
+
+      vi.mocked(ProviderFactory.getProviderForModel).mockReturnValue(mockProvider as any);
+
+      vi.mocked(promptBuilder.buildPromptWithImages).mockResolvedValue({
+        content: 'Hello',
+        hasImages: false,
+      });
+
+      await service.sendMessage({
+        sessionId: 'session-1',
+        message: 'Hello',
+      });
+
+      expect(mockEvents.emit).toHaveBeenCalledWith(
+        'agent:stream',
+        expect.objectContaining({
+          sessionId: 'session-1',
+          type: 'tool_result',
+          tool: {
+            name: 'Read',
+            input: {
+              toolUseId: 'tool-1',
+              content: 'File contents here',
+            },
+          },
+        })
+      );
+    });
+
+    it('should emit tool_result with unknown tool name for unregistered tool_use_id', async () => {
+      const mockProvider = {
+        getName: () => 'gemini',
+        executeQuery: async function* () {
+          // Yield tool_result WITHOUT a preceding tool_use (unregistered tool_use_id)
+          yield {
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              content: [
+                {
+                  type: 'tool_result',
+                  tool_use_id: 'unregistered-id',
+                  content: 'Some result content',
+                },
+              ],
+            },
+          };
+          yield {
+            type: 'result',
+            subtype: 'success',
+          };
+        },
+      };
+
+      vi.mocked(ProviderFactory.getProviderForModel).mockReturnValue(mockProvider as any);
+
+      vi.mocked(promptBuilder.buildPromptWithImages).mockResolvedValue({
+        content: 'Hello',
+        hasImages: false,
+      });
+
+      await service.sendMessage({
+        sessionId: 'session-1',
+        message: 'Hello',
+      });
+
+      expect(mockEvents.emit).toHaveBeenCalledWith(
+        'agent:stream',
+        expect.objectContaining({
+          sessionId: 'session-1',
+          type: 'tool_result',
+          tool: {
+            name: 'unknown',
+            input: {
+              toolUseId: 'unregistered-id',
+              content: 'Some result content',
+            },
+          },
+        })
+      );
+    });
+
     it('should handle images in message', async () => {
       const mockProvider = {
         getName: () => 'claude',

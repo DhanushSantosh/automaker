@@ -75,6 +75,8 @@ const SETTINGS_FIELDS_TO_SYNC = [
   'enhancementModel',
   'validationModel',
   'phaseModels',
+  'defaultThinkingLevel',
+  'defaultReasoningEffort',
   'enabledCursorModels',
   'cursorDefaultModel',
   'enabledOpencodeModels',
@@ -781,9 +783,9 @@ export async function refreshSettingsFromServer(): Promise<boolean> {
       defaultRequirePlanApproval: serverSettings.defaultRequirePlanApproval,
       defaultFeatureModel: serverSettings.defaultFeatureModel
         ? migratePhaseModelEntry(serverSettings.defaultFeatureModel)
-        : { model: 'claude-opus' },
+        : { model: 'claude-opus', thinkingLevel: 'adaptive' },
       muteDoneSound: serverSettings.muteDoneSound,
-      defaultMaxTurns: serverSettings.defaultMaxTurns ?? 1000,
+      defaultMaxTurns: serverSettings.defaultMaxTurns ?? 10000,
       disableSplashScreen: serverSettings.disableSplashScreen ?? false,
       serverLogLevel: serverSettings.serverLogLevel ?? 'info',
       enableRequestLogging: serverSettings.enableRequestLogging ?? true,
@@ -793,6 +795,8 @@ export async function refreshSettingsFromServer(): Promise<boolean> {
         ...DEFAULT_PHASE_MODELS,
         ...(migratedPhaseModels ?? serverSettings.phaseModels),
       },
+      defaultThinkingLevel: serverSettings.defaultThinkingLevel ?? 'adaptive',
+      defaultReasoningEffort: serverSettings.defaultReasoningEffort ?? 'none',
       enabledCursorModels: allCursorModels, // Always use ALL cursor models
       cursorDefaultModel: sanitizedCursorDefault,
       enabledOpencodeModels: sanitizedEnabledOpencodeModels,

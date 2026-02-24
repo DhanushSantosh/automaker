@@ -33,6 +33,14 @@ export interface ToolUse {
   input: unknown;
 }
 
+export interface ToolResult {
+  name: string;
+  input: {
+    toolUseId?: string;
+    content: string;
+  };
+}
+
 export type StreamEvent =
   | {
       type: 'message';
@@ -50,6 +58,11 @@ export type StreamEvent =
       type: 'tool_use';
       sessionId: string;
       tool: ToolUse;
+    }
+  | {
+      type: 'tool_result';
+      sessionId: string;
+      tool: ToolResult;
     }
   | {
       type: 'complete';
@@ -1071,6 +1084,27 @@ export interface WorktreeAPI {
       prError?: string;
       browserUrl?: string;
       ghCliAvailable?: boolean;
+    };
+    error?: string;
+  }>;
+
+  // Update the tracked PR number for a worktree branch
+  updatePRNumber: (
+    worktreePath: string,
+    prNumber: number,
+    projectPath?: string
+  ) => Promise<{
+    success: boolean;
+    result?: {
+      branch: string;
+      prInfo: {
+        number: number;
+        url: string;
+        title: string;
+        state: string;
+        createdAt: string;
+      };
+      ghCliUnavailable?: boolean;
     };
     error?: string;
   }>;

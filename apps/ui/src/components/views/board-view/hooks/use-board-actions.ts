@@ -1,5 +1,6 @@
 // @ts-nocheck - feature update logic with partial updates and image/file handling
 import { useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Feature,
   FeatureImage,
@@ -18,10 +19,28 @@ import { useVerifyFeature, useResumeFeature } from '@/hooks/mutations';
 import { truncateDescription } from '@/lib/utils';
 import { getBlockingDependencies } from '@automaker/dependency-resolver';
 import { createLogger } from '@automaker/utils/logger';
+import { queryKeys } from '@/lib/query-keys';
 
 const logger = createLogger('BoardActions');
 
 const MAX_DUPLICATES = 50;
+
+/**
+ * Removes a running task from all worktrees for a given project.
+ * Used when stopping features to ensure the task is removed from all worktree contexts,
+ * not just the current one.
+ */
+function removeRunningTaskFromAllWorktrees(projectId: string, featureId: string): void {
+  const store = useAppStore.getState();
+  const prefix = `${projectId}::`;
+  for (const [key, worktreeState] of Object.entries(store.autoModeByWorktree)) {
+    if (key.startsWith(prefix) && worktreeState.runningTasks?.includes(featureId)) {
+      const branchPart = key.slice(prefix.length);
+      const branch = branchPart === '__main__' ? null : branchPart;
+      store.removeRunningTask(projectId, branch, featureId);
+    }
+  }
+}
 
 interface UseBoardActionsProps {
   currentProject: { path: string; id: string } | null;
@@ -84,6 +103,8 @@ export function useBoardActions({
   onWorktreeAutoSelect,
   currentWorktreeBranch,
 }: UseBoardActionsProps) {
+  const queryClient = useQueryClient();
+
   // IMPORTANT: Use individual selectors instead of bare useAppStore() to prevent
   // subscribing to the entire store. Bare useAppStore() causes the host component
   // (BoardView) to re-render on EVERY store change, which cascades through effects
@@ -503,6 +524,10 @@ export function useBoardActions({
       if (isRunning) {
         try {
           await autoMode.stopFeature(featureId);
+          // Remove from all worktrees
+          if (currentProject) {
+            removeRunningTaskFromAllWorktrees(currentProject.id, featureId);
+          }
           toast.success('Agent stopped', {
             description: `Stopped and deleted: ${truncateDescription(feature.description)}`,
           });
@@ -533,7 +558,7 @@ export function useBoardActions({
       removeFeature(featureId);
       await persistFeatureDelete(featureId);
     },
-    [features, runningAutoTasks, autoMode, removeFeature, persistFeatureDelete]
+    [features, runningAutoTasks, autoMode, removeFeature, persistFeatureDelete, currentProject]
   );
 
   const handleRunFeature = useCallback(
@@ -999,6 +1024,31 @@ export function useBoardActions({
             ? 'waiting_approval'
             : 'backlog';
 
+        // Remove the running task from ALL worktrees for this project.
+        // autoMode.stopFeature only removes from its scoped worktree (branchName),
+        // but the feature may be tracked under a different worktree branch.
+        // Without this, runningAutoTasksAllWorktrees still contains the feature
+        // and the board column logic forces it into in_progress.
+        if (currentProject) {
+          removeRunningTaskFromAllWorktrees(currentProject.id, feature.id);
+        }
+
+        // Optimistically update the React Query features cache so the board
+        // moves the card immediately. Without this, the card stays in
+        // "in_progress" until the next poll cycle (30s) because the async
+        // refetch races with the persistFeatureUpdate write.
+        if (currentProject) {
+          queryClient.setQueryData(
+            queryKeys.features.all(currentProject.path),
+            (oldFeatures: Feature[] | undefined) => {
+              if (!oldFeatures) return oldFeatures;
+              return oldFeatures.map((f) =>
+                f.id === feature.id ? { ...f, status: targetStatus } : f
+              );
+            }
+          );
+        }
+
         if (targetStatus !== feature.status) {
           moveFeature(feature.id, targetStatus);
           // Must await to ensure file is written before user can restart
@@ -1020,7 +1070,7 @@ export function useBoardActions({
         });
       }
     },
-    [autoMode, moveFeature, persistFeatureUpdate]
+    [autoMode, moveFeature, persistFeatureUpdate, currentProject, queryClient]
   );
 
   const handleStartNextFeatures = useCallback(async () => {
@@ -1137,6 +1187,12 @@ export function useBoardActions({
           })
         )
       );
+      // Remove from all worktrees
+      if (currentProject) {
+        for (const feature of runningVerified) {
+          removeRunningTaskFromAllWorktrees(currentProject.id, feature.id);
+        }
+      }
     }
 
     // Use bulk update API for a single server request instead of N individual calls

@@ -36,6 +36,7 @@ import {
   DEFAULT_COPILOT_MODEL,
   DEFAULT_MAX_CONCURRENCY,
   DEFAULT_GLOBAL_SETTINGS,
+  getThinkingLevelsForModel,
 } from '@automaker/types';
 
 // Import types from modular type files
@@ -371,9 +372,9 @@ const initialState: AppState = {
   defaultPlanningMode: 'skip' as PlanningMode,
   defaultRequirePlanApproval: false,
   defaultFeatureModel: DEFAULT_GLOBAL_SETTINGS.defaultFeatureModel,
-  defaultThinkingLevel: DEFAULT_GLOBAL_SETTINGS.defaultThinkingLevel ?? 'none',
+  defaultThinkingLevel: DEFAULT_GLOBAL_SETTINGS.defaultThinkingLevel ?? 'adaptive',
   defaultReasoningEffort: DEFAULT_GLOBAL_SETTINGS.defaultReasoningEffort ?? 'none',
-  defaultMaxTurns: DEFAULT_GLOBAL_SETTINGS.defaultMaxTurns ?? 1000,
+  defaultMaxTurns: DEFAULT_GLOBAL_SETTINGS.defaultMaxTurns ?? 10000,
   pendingPlanApproval: null,
   claudeRefreshInterval: 60,
   claudeUsage: null,
@@ -396,6 +397,10 @@ const initialState: AppState = {
   autoDismissInitScriptIndicatorByProject: {},
   useWorktreesByProject: {},
   worktreeCopyFilesByProject: {},
+  pinnedWorktreesCountByProject: {},
+  pinnedWorktreeBranchesByProject: {},
+  worktreeDropdownThresholdByProject: {},
+  alwaysUseWorktreeDropdownByProject: {},
   worktreePanelCollapsed: false,
   lastProjectDir: '',
   recentFolders: [],
@@ -2453,7 +2458,20 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   setDefaultFeatureModel: (entry) => set({ defaultFeatureModel: entry }),
 
   setDefaultThinkingLevel: async (level) => {
-    set({ defaultThinkingLevel: level });
+    const currentModel = get().defaultFeatureModel;
+    const modelId = currentModel.model;
+    const availableLevels = getThinkingLevelsForModel(modelId);
+
+    // Also update defaultFeatureModel's thinkingLevel if compatible
+    if (availableLevels.includes(level)) {
+      set({
+        defaultThinkingLevel: level,
+        defaultFeatureModel: { ...currentModel, thinkingLevel: level },
+      });
+    } else {
+      set({ defaultThinkingLevel: level });
+    }
+
     // Sync to server
     try {
       const httpApi = getHttpApiClient();
@@ -2478,7 +2496,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     // Guard against NaN/Infinity before flooring and clamping
     const safeValue = Number.isFinite(maxTurns) ? maxTurns : 1;
     // Clamp to valid range
-    const clamped = Math.max(1, Math.min(2000, Math.floor(safeValue)));
+    const clamped = Math.max(1, Math.min(10000, Math.floor(safeValue)));
     set({ defaultMaxTurns: clamped });
     // Sync to server
     try {
@@ -2640,6 +2658,65 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       },
     })),
   getWorktreeCopyFiles: (projectPath) => get().worktreeCopyFilesByProject[projectPath] ?? [],
+
+  // Worktree Display Settings actions
+  setPinnedWorktreesCount: (projectPath, count) =>
+    set((state) => ({
+      pinnedWorktreesCountByProject: {
+        ...state.pinnedWorktreesCountByProject,
+        [projectPath]: count,
+      },
+    })),
+  getPinnedWorktreesCount: (projectPath) => get().pinnedWorktreesCountByProject[projectPath] ?? 0,
+  setPinnedWorktreeBranches: (projectPath, branches) =>
+    set((state) => ({
+      pinnedWorktreeBranchesByProject: {
+        ...state.pinnedWorktreeBranchesByProject,
+        [projectPath]: branches,
+      },
+    })),
+  getPinnedWorktreeBranches: (projectPath) =>
+    get().pinnedWorktreeBranchesByProject[projectPath] ?? [],
+  swapPinnedWorktreeBranch: (projectPath, slotIndex, newBranch) =>
+    set((state) => {
+      const src = state.pinnedWorktreeBranchesByProject[projectPath] ?? [];
+      // Pre-fill up to slotIndex to prevent sparse holes
+      const current: string[] = Array.from(
+        { length: Math.max(src.length, slotIndex + 1) },
+        (_, i) => src[i] ?? ''
+      );
+      // If the new branch is already in another slot, swap them (only when newBranch is non-empty)
+      const existingIndex = newBranch !== '' ? current.indexOf(newBranch) : -1;
+      if (existingIndex !== -1 && existingIndex !== slotIndex) {
+        // Swap: put the old branch from this slot into the other slot
+        current[existingIndex] = current[slotIndex];
+      }
+      current[slotIndex] = newBranch;
+      return {
+        pinnedWorktreeBranchesByProject: {
+          ...state.pinnedWorktreeBranchesByProject,
+          [projectPath]: current,
+        },
+      };
+    }),
+  setWorktreeDropdownThreshold: (projectPath, threshold) =>
+    set((state) => ({
+      worktreeDropdownThresholdByProject: {
+        ...state.worktreeDropdownThresholdByProject,
+        [projectPath]: threshold,
+      },
+    })),
+  getWorktreeDropdownThreshold: (projectPath) =>
+    get().worktreeDropdownThresholdByProject[projectPath] ?? 3,
+  setAlwaysUseWorktreeDropdown: (projectPath, always) =>
+    set((state) => ({
+      alwaysUseWorktreeDropdownByProject: {
+        ...state.alwaysUseWorktreeDropdownByProject,
+        [projectPath]: always,
+      },
+    })),
+  getAlwaysUseWorktreeDropdown: (projectPath) =>
+    get().alwaysUseWorktreeDropdownByProject[projectPath] ?? true,
 
   // UI State actions
   setWorktreePanelCollapsed: (collapsed) => set({ worktreePanelCollapsed: collapsed }),
