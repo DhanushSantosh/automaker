@@ -35,6 +35,7 @@ import {
   getUseClaudeCodeSystemPromptSetting,
   getPromptCustomization,
   getPhaseModelWithOverrides,
+  getProviderByModelId,
 } from '../../lib/settings-helpers.js';
 
 /** Maximum number of retry attempts for transient CLI failures */
@@ -231,6 +232,35 @@ export async function generateBacklogPlan(
       effectiveModel = resolved.model;
       thinkingLevel = resolved.thinkingLevel;
       credentials = await settingsService?.getCredentials();
+      // Resolve Claude-compatible provider when client sends a model (e.g. MiniMax, GLM)
+      if (settingsService) {
+        const providerResult = await getProviderByModelId(
+          effectiveModel,
+          settingsService,
+          '[BacklogPlan]'
+        );
+        if (providerResult.provider) {
+          claudeCompatibleProvider = providerResult.provider;
+          if (providerResult.credentials) {
+            credentials = providerResult.credentials;
+          }
+        }
+        // Fallback: use phase settings provider if model lookup found nothing (e.g. model
+        // string format differs from provider's model id, but backlog planning phase has providerId).
+        if (!claudeCompatibleProvider) {
+          const phaseResult = await getPhaseModelWithOverrides(
+            'backlogPlanningModel',
+            settingsService,
+            projectPath,
+            '[BacklogPlan]'
+          );
+          const phaseResolved = resolvePhaseModel(phaseResult.phaseModel);
+          if (phaseResult.provider && phaseResolved.model === effectiveModel) {
+            claudeCompatibleProvider = phaseResult.provider;
+            credentials = phaseResult.credentials ?? credentials;
+          }
+        }
+      }
     } else if (settingsService) {
       // Use settings-based model with provider info
       const phaseResult = await getPhaseModelWithOverrides(
@@ -291,8 +321,12 @@ CRITICAL INSTRUCTIONS:
 
 ${userPrompt}`;
       finalSystemPrompt = undefined; // System prompt is now embedded in the user prompt
+    } else if (claudeCompatibleProvider) {
+      // Claude-compatible providers (MiniMax, GLM, etc.) use a plain API; do not use
+      // the claude_code preset (which is for Claude CLI/subprocess and can break the request).
+      finalSystemPrompt = systemPrompt;
     } else if (useClaudeCodeSystemPrompt) {
-      // Use claude_code preset for Claude models so the SDK subprocess
+      // Use claude_code preset for native Claude so the SDK subprocess
       // authenticates via CLI OAuth or API key the same way all other SDK calls do.
       finalSystemPrompt = {
         type: 'preset',
